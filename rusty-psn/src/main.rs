@@ -2,7 +2,7 @@ mod error;
 
 use std::io;
 
-#[tokio::main]
+#[tokio::main(flavor = "current_thread")]
 async fn main() {
     let mut serial = String::new();
 

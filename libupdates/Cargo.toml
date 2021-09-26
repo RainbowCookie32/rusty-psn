@@ -9,5 +9,5 @@ edition = "2018"
 reqwest = "0.11"
 serde-xml-rs = "0.5.1"
 
-tokio = { version = "1", features = ["full"] }
+tokio = { version = "1", default-features = false, features = ["rt", "macros"] }
 serde = { version = "1.0", default-features = false, features = ["derive"] }
