@@ -61,12 +61,14 @@ impl Package {
 }
 
 pub async fn get_updates<S: AsRef<str>>(serial: S) -> Result<UpdateData, error::PSNError> {
+    let serial = serial.as_ref().to_ascii_uppercase();
+
     let client = reqwest::Client::builder()
         .danger_accept_invalid_certs(true).build()
         .map_err(error::PSNError::ReqwestErr)?
     ;
 
-    let query_url = format!("https://a0.ww.np.dl.playstation.net/tpl/np/{0}/{0}-ver.xml", serial.as_ref());
+    let query_url = format!("https://a0.ww.np.dl.playstation.net/tpl/np/{0}/{0}-ver.xml", serial);
     let request = client.get(query_url)
         .build()
         .map_err(error::PSNError::ReqwestErr)?
