@@ -1,6 +1,9 @@
 mod error;
 
-use std::io;
+use std::io::{self, Write};
+
+use crossterm::cursor::{MoveTo, MoveToColumn};
+use crossterm::terminal::{Clear, ClearType};
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() {
@@ -12,9 +15,13 @@ async fn main() {
     serial = serial.trim().to_string();
     serial.make_ascii_uppercase();
 
+    println!("Searching for updates...");
+
     let result = libupdates::get_updates(serial).await;
 
     if let Ok(data) = result {
+        crossterm::execute!(io::stdout(), Clear(ClearType::All), MoveTo(0, 0)).unwrap();
+
         let title = {
             if let Some(pkg) = data.get_update_tag().get_packages().last() {
                 if let Some(paramsfo) = pkg.get_paramsfo() {
@@ -72,8 +79,15 @@ async fn download_update(serial: &str, package: &libupdates::Package) -> Result<
         .map_err(error::DownloadError::Io)?
     ;
 
+    let mut downloaded = 0;
+
     while let Some(chunk) = response.chunk().await.map_err(error::DownloadError::Reqwest)? {
         let mut chunk = chunk.as_ref();
+
+        downloaded += chunk.len();
+        crossterm::execute!(io::stdout(), Clear(ClearType::CurrentLine), MoveToColumn(0)).unwrap();
+        print!("Downloaded {}/{}", format_size(downloaded.to_string()), format_size(package.get_size()));
+        io::stdout().flush().unwrap();
 
         tokio::io::copy(&mut chunk, &mut file)
             .await
@@ -81,6 +95,7 @@ async fn download_update(serial: &str, package: &libupdates::Package) -> Result<
         ;
     }
 
+    println!("\n");
     Ok(())
 }
 
