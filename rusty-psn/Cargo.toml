@@ -1,0 +1,12 @@
+[package]
+name = "rusty-psn"
+version = "0.1.0"
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+libupdates = { path = "../libupdates" }
+
+reqwest = "0.11"
+tokio = { version = "1", features = ["full"] }
