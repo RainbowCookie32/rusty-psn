@@ -39,7 +39,9 @@ pub struct Package {
     version: String,
     size: String,
     sha1sum: String,
-    url: String
+    url: String,
+    // Last pkg seems to include title info from PARAM.sfo.
+    paramsfo: Option<ParamSfo>
 }
 
 impl Package {
@@ -58,6 +60,12 @@ impl Package {
     pub fn get_url(&self) -> String {
         self.url.clone()
     }
+}
+
+#[derive(Debug, Deserialize)]
+pub struct ParamSfo {
+    #[serde(rename = "$value")]
+    title: Vec<String>
 }
 
 pub async fn get_updates<S: AsRef<str>>(serial: S) -> Result<UpdateData, error::PSNError> {
@@ -102,31 +110,37 @@ pub async fn get_updates<S: AsRef<str>>(serial: S) -> Result<UpdateData, error::
 mod tests {
     #[tokio::test]
     async fn no_patches() {
-        if let Err(crate::error::PSNError::NoUpdates) = crate::get_updates("BLUS41044").await {
+        let result = crate::get_updates("BLUS41044").await;
+
+        if let Err(crate::error::PSNError::NoUpdates) = result {
             
         }
         else {
-            panic!("Unexpected updates received!")
+            panic!("Unexpected result on test: {:?}", result)
         }
     }
 
     #[tokio::test]
     async fn single_patch() {
-        if let Ok(patch_data) = crate::get_updates("BCUS98174").await {
+        let result = crate::get_updates("BCUS98174").await;
+
+        if let Ok(patch_data) = result {
             assert!(patch_data.tag.package.len() == 1);
         }
-        else {
-            panic!("Failed to get patch data");
+        else if let Err(e) = result {
+            panic!("Failed to get patch data: {}", e);
         }
     }
 
     #[tokio::test]
     async fn multiple_patches() {
-        if let Ok(patch_data) = crate::get_updates("BCUS98232").await {
+        let result = crate::get_updates("BCUS98232").await;
+
+        if let Ok(patch_data) = result {
             assert!(patch_data.tag.package.len() == 9);
         }
-        else {
-            panic!("Failed to get patch data");
+        else if let Err(e) = result {
+            panic!("Failed to get patch data: {}", e);
         }
     }
 }
