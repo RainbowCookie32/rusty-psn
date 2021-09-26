@@ -1,0 +1,50 @@
+name: Rust
+
+on:
+  push:
+    branches:
+      - master
+  pull_request:
+    branches:
+      - master
+
+jobs:  
+  linux-build-release:
+    runs-on: [ubuntu-latest]
+    steps:
+    - uses: actions/checkout@v2
+    - uses: actions/cache@v2
+      with:
+        path: target
+        key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+    - name: Build rusty-psn (release)
+      run: cargo build --release
+    - name: Move binary
+      run: |
+        mkdir result
+        cp target/release/rusty-psn result
+    - name: Upload artifact
+      uses: actions/upload-artifact@v1.0.0
+      with:
+        name: rusty-psn-linux
+        path: result
+        
+  windows-build-release:
+    runs-on: [windows-latest]
+    steps:
+    - uses: actions/checkout@v2
+    - uses: actions/cache@v2
+      with:
+        path: target
+        key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+    - name: Build rusty-psn (release)
+      run: cargo build --release
+    - name: Move binary
+      run: |
+        mkdir result
+        copy target/release/rusty-psn.exe result 
+    - name: Upload artifact
+      uses: actions/upload-artifact@v1.0.0
+      with:
+        name: rusty-psn-windows
+        path: result 
