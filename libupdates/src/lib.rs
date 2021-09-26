@@ -60,12 +60,22 @@ impl Package {
     pub fn get_url(&self) -> String {
         self.url.clone()
     }
+
+    pub fn get_paramsfo(&self) -> &Option<ParamSfo> {
+        &self.paramsfo
+    }
 }
 
 #[derive(Debug, Deserialize)]
 pub struct ParamSfo {
     #[serde(rename = "$value")]
-    title: Vec<String>
+    titles: Vec<String>
+}
+
+impl ParamSfo {
+    pub fn get_titles(&self) -> &Vec<String> {
+        &self.titles
+    }
 }
 
 pub async fn get_updates<S: AsRef<str>>(serial: S) -> Result<UpdateData, error::PSNError> {

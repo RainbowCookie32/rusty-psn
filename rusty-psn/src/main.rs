@@ -6,12 +6,29 @@ use std::io;
 async fn main() {
     let mut serial = String::new();
 
-    println!("Enter your game's serial:");
+    println!("Enter your game's serial (e.g. BLUS30035):");
     io::stdin().read_line(&mut serial).unwrap();
+    
+    serial = serial.trim().to_string();
+    serial.make_ascii_uppercase();
 
-    let result = libupdates::get_updates(serial.trim()).await;
+    let result = libupdates::get_updates(serial).await;
 
     if let Ok(data) = result {
+        let title = {
+            if let Some(pkg) = data.get_update_tag().get_packages().last() {
+                if let Some(paramsfo) = pkg.get_paramsfo() {
+                    paramsfo.get_titles()[0].clone()
+                }
+                else {
+                    String::new()
+                }
+            }
+            else {
+                String::new()
+            }
+        };
+
         let title_id = data.get_title_id();
         let title_tag = data.get_update_tag();
 
@@ -22,7 +39,7 @@ async fn main() {
             }
         }
 
-        println!();
+        println!("Found {} update(s) for {} ({})\n", title_tag.get_packages().len(), &title, &title_id);
 
         for patch in title_tag.get_packages() {
             println!("Downloading {} - {} ({})\n    {}\n", title_id, patch.get_version(), format_size(patch.get_size()), patch.get_url());
