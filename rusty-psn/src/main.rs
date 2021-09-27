@@ -56,6 +56,9 @@ async fn main() {
     else if let Err(error) = result {
         println!("Found an error while checking for updates: {}", error);
     }
+
+    println!("All done! Press Enter to exit.");
+    io::stdin().read_line(&mut String::new()).unwrap();
 }
 
 async fn download_update(serial: &str, package: &libupdates::Package) -> Result<(), error::DownloadError> {
