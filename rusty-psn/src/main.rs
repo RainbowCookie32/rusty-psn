@@ -49,7 +49,7 @@ async fn main() {
         println!("Found {} update(s) for {} ({})\n", title_tag.get_packages().len(), &title, &title_id);
 
         for patch in title_tag.get_packages() {
-            println!("Downloading {} - {} ({})\n    {}\n", title_id, patch.get_version(), format_size(patch.get_size()), patch.get_url());
+            println!("Downloading {} - {} ({})\n    {}", title_id, patch.get_version(), format_size(patch.get_size()), patch.get_url());
             download_update(&title_id, patch).await.unwrap();
         }
     }
@@ -74,7 +74,14 @@ async fn download_update(serial: &str, package: &libupdates::Package) -> Result<
         .unwrap_or_else(|| String::from("update.pkg"))
     ;
 
-    let mut file = tokio::fs::File::create(format!("{}/{}", serial, filename))
+    let path = format!("{}/{}", serial, filename);
+
+    if std::path::Path::new(&path).exists() && check_update(&path, package).await {
+        println!();
+        return Ok(());
+    }
+
+    let mut file = tokio::fs::File::create(&path)
         .await
         .map_err(error::DownloadError::Io)?
     ;
@@ -95,8 +102,50 @@ async fn download_update(serial: &str, package: &libupdates::Package) -> Result<
         ;
     }
 
-    println!("\n");
-    Ok(())
+    println!();
+
+    if check_update(&path, package).await {
+        println!();
+        Ok(())
+    }
+    else {
+        Err(error::DownloadError::HashMismatch)
+    }
+}
+
+async fn check_update(path: &str, package: &libupdates::Package) -> bool {
+    print!("Verifying download...");
+    io::stdout().flush().unwrap();
+
+    if let Ok(file) = tokio::fs::read(path).await {
+        // Last 0x20 bytes of the file are the hash itself and isn't
+        // a part of the hash provided by the API.
+        let file = &file[0..file.len() - 0x20];
+        let mut sha1 = sha1::Sha1::default();
+        sha1.update(file);
+
+        let pkg_hash = package.get_hash();
+        let download_hash = sha1.digest().to_string();
+
+        if pkg_hash == download_hash {
+            println!("ok!");
+            io::stdout().flush().unwrap();
+            
+            true
+        }
+        else {
+            println!("fail!");
+            io::stdout().flush().unwrap();
+
+            false
+        }
+    }
+    else {
+        println!("fail!");
+        io::stdout().flush().unwrap();
+
+        false
+    }
 }
 
 fn format_size(size: String) -> String {
