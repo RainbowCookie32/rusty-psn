@@ -8,8 +8,8 @@ on:
     branches:
       - master
 
-jobs:  
-  linux-build-release:
+jobs:
+  linux-cli-build:
     runs-on: [ubuntu-latest]
     steps:
     - uses: actions/checkout@v2
@@ -17,8 +17,28 @@ jobs:
       with:
         path: target
         key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
-    - name: Build rusty-psn (release)
-      run: cargo build --release
+    - name: Build rusty-psn (linux-cli)
+      run: cargo build --release --no-default-features --features "cli"
+    - name: Move binary
+      run: |
+        mkdir result
+        cp target/release/rusty-psn result
+    - name: Upload artifact
+      uses: actions/upload-artifact@v1.0.0
+      with:
+        name: rusty-psn-linux
+        path: result
+
+  linux-egui-build:
+    runs-on: [ubuntu-latest]
+    steps:
+    - uses: actions/checkout@v2
+    - uses: actions/cache@v2
+      with:
+        path: target
+        key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+    - name: Build rusty-psn (linux-egui)
+      run: cargo build --release --no-default-features --features "egui"
     - name: Move binary
       run: |
         mkdir result
@@ -29,7 +49,7 @@ jobs:
         name: rusty-psn-linux
         path: result
         
-  windows-build-release:
+  windows-cli-build:
     runs-on: [windows-latest]
     steps:
     - uses: actions/checkout@v2
@@ -37,8 +57,28 @@ jobs:
       with:
         path: target
         key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
-    - name: Build rusty-psn (release)
-      run: cargo build --release
+    - name: Build rusty-psn (windows-egui)
+      run: cargo build --release --no-default-features --features "cli"
+    - name: Move binary
+      run: |
+        mkdir result
+        copy target/release/rusty-psn.exe result 
+    - name: Upload artifact
+      uses: actions/upload-artifact@v1.0.0
+      with:
+        name: rusty-psn-windows
+        path: result 
+
+  windows-egui-build:
+    runs-on: [windows-latest]
+    steps:
+    - uses: actions/checkout@v2
+    - uses: actions/cache@v2
+      with:
+        path: target
+        key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+    - name: Build rusty-psn (windows-egui)
+      run: cargo build --release --no-default-features --features "egui"
     - name: Move binary
       run: |
         mkdir result
