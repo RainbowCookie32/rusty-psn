@@ -37,7 +37,7 @@ pub async fn send_pkg_request(url: String) -> Result<(String, Response), Downloa
 }
 
 pub async fn create_pkg_file(path: PathBuf) -> Result<File, DownloadError> {
-    match fs::create_dir_all(&path).await {
+    match fs::create_dir_all(&path.parent().unwrap()).await {
         Ok(_) => {},
         Err(e) => {
             match e.kind() {
