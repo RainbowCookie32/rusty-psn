@@ -2,10 +2,11 @@ use bytesize::ByteSize;
 use eframe::{egui, epi};
 use poll_promise::Promise;
 
-use tokio::{sync::mpsc, io::AsyncWriteExt};
-use tokio::io::{AsyncReadExt, AsyncSeekExt};
+use tokio::sync::mpsc;
 use tokio::runtime::Runtime;
+use tokio::io::AsyncWriteExt;
 
+use crate::utils;
 use crate::psn::{DownloadError, UpdateError, UpdateInfo, PackageInfo};
 
 pub struct ActiveDownload {
@@ -273,49 +274,10 @@ impl UpdatesApp {
             let pkg_size = pkg_size;
             let pkg_hash = pkg_hash;
 
-            let client = reqwest::ClientBuilder::default()
-                // Sony has funky certificates, so this needs to be enabled.
-                .danger_accept_invalid_certs(true)
-                .build()
-                .map_err(DownloadError::Reqwest)?
-            ;
+            let (file_name, mut response) = utils::send_pkg_request(pkg_url).await?;
+            let mut file = utils::create_pkg_file(std::path::PathBuf::from(format!("pkgs/{}/{}", serial, file_name))).await?;
 
-            let mut response = client.get(pkg_url)
-                .send()
-                .await
-                .map_err(DownloadError::Reqwest)?
-            ;
-
-            let file_name = response
-                .url()
-                .path_segments()
-                .and_then(|s| s.last())
-                .and_then(|n| if n.is_empty() { None } else { Some(n.to_string()) })
-                .unwrap_or_else(|| String::from("update.pkg"))
-            ;
-
-            let file_path = std::path::PathBuf::from(format!("pkgs/{}/{}", serial, file_name));
-
-            match tokio::fs::create_dir_all(format!("pkgs/{serial}")).await {
-                Ok(_) => {},
-                Err(e) => {
-                    match e.kind() {
-                        tokio::io::ErrorKind::AlreadyExists => {},
-                        _ => return Err(DownloadError::Tokio(e))
-                    }
-                }
-            }
-
-            let mut file = {
-                let mut options = tokio::fs::OpenOptions::default();
-                
-                options.create(true);
-                options.read(true);
-                options.write(true);
-                options.open(file_path).await.map_err(DownloadError::Tokio)?
-            };
-
-            if !hash_file(&mut file, &pkg_hash).await {
+            if !utils::hash_file(&mut file, &pkg_hash).await? {
                 file.set_len(0).await.map_err(DownloadError::Tokio)?;
 
                 while let Some(download_chunk) = response.chunk().await.map_err(DownloadError::Reqwest)? {
@@ -324,12 +286,8 @@ impl UpdatesApp {
                     tx.send(download_chunk.len() as u64).await.unwrap();
                     file.write_all(download_chunk).await.map_err(DownloadError::Tokio)?;
                 }
-    
-                // Reset the position of the internal buffer before trying to calculate the hash,
-                // otherwise read_to_end doesn't read anything.
-                file.seek(tokio::io::SeekFrom::Start(0)).await.map_err(DownloadError::Tokio)?;
-                                            
-                if hash_file(&mut file, &pkg_hash).await {
+                                                
+                if utils::hash_file(&mut file, &pkg_hash).await? {
                     Ok(())
                 }
                 else {
@@ -355,25 +313,4 @@ impl UpdatesApp {
 
         downloads_queue.push(dl);
     }
-}
-
-async fn hash_file(file: &mut tokio::fs::File, hash: &str) -> bool {
-    let mut buf = Vec::new();
-    let mut hasher = sha1_smol::Sha1::new();
-
-    match file.read_to_end(&mut buf).await {
-        Ok(bytes) => {
-            if bytes < 0x20 {
-                return false;
-            }
-        }
-        Err(e) => {
-            println!("error reading file: {}", e);
-            return false;
-        }
-    }
-    
-    // Last 0x20 bytes are the SHA1 hash.
-    hasher.update(&buf[0..buf.len() - 0x20]);
-    hasher.digest().to_string() == hash
 }

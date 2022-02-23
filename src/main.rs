@@ -1,4 +1,5 @@
 mod psn;
+mod utils;
 #[cfg(feature = "cli")]
 mod cli;
 #[cfg(feature = "egui")]
