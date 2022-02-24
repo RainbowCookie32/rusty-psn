@@ -7,7 +7,7 @@ mod egui;
 
 fn main() {
     #[cfg(feature = "cli")]
-    todo!();
+    cli::start_app();
     #[cfg(feature = "egui")]
     eframe::run_native(Box::new(egui::UpdatesApp::default()), eframe::NativeOptions::default());
 }
