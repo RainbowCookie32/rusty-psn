@@ -26,7 +26,7 @@ jobs:
     - name: Upload artifact
       uses: actions/upload-artifact@v1.0.0
       with:
-        name: rusty-psn-linux
+        name: rusty-psn-cli-linux
         path: result
 
   linux-egui-build:
@@ -48,7 +48,7 @@ jobs:
     - name: Upload artifact
       uses: actions/upload-artifact@v1.0.0
       with:
-        name: rusty-psn-linux
+        name: rusty-psn-egui-linux
         path: result
         
   windows-cli-build:
@@ -68,7 +68,7 @@ jobs:
     - name: Upload artifact
       uses: actions/upload-artifact@v1.0.0
       with:
-        name: rusty-psn-windows
+        name: rusty-psn-cli-windows
         path: result 
 
   windows-egui-build:
@@ -88,5 +88,5 @@ jobs:
     - name: Upload artifact
       uses: actions/upload-artifact@v1.0.0
       with:
-        name: rusty-psn-windows
+        name: rusty-psn-egui-windows
         path: result 
