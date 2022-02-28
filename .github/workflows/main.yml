@@ -1,22 +1,16 @@
-name: Rust
+name: rusty-psn Builds
 
 on:
-  push:
-    branches:
-      - master
-  pull_request:
-    branches:
-      - master
+  - push
+  - pull_request
 
 jobs:
   linux-cli-build:
     runs-on: [ubuntu-latest]
     steps:
     - uses: actions/checkout@v2
-    - uses: actions/cache@v2
-      with:
-        path: target
-        key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+    - name: Rust Cache
+      uses: Swatinem/rust-cache@v1.3.0
     - name: Build rusty-psn (linux-cli)
       run: cargo build --release --no-default-features --features "cli"
     - name: Move binary
@@ -33,10 +27,8 @@ jobs:
     runs-on: [ubuntu-latest]
     steps:
     - uses: actions/checkout@v2
-    - uses: actions/cache@v2
-      with:
-        path: target
-        key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+    - name: Rust Cache
+      uses: Swatinem/rust-cache@v1.3.0
     - name: Install egui deps
       run: sudo apt update && sudo apt-get install libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev libspeechd-dev libxkbcommon-dev libssl-dev
     - name: Build rusty-psn (linux-egui)
@@ -55,10 +47,8 @@ jobs:
     runs-on: [windows-latest]
     steps:
     - uses: actions/checkout@v2
-    - uses: actions/cache@v2
-      with:
-        path: target
-        key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+    - name: Rust Cache
+      uses: Swatinem/rust-cache@v1.3.0
     - name: Build rusty-psn (windows-egui)
       run: cargo build --release --no-default-features --features "cli"
     - name: Move binary
@@ -75,10 +65,8 @@ jobs:
     runs-on: [windows-latest]
     steps:
     - uses: actions/checkout@v2
-    - uses: actions/cache@v2
-      with:
-        path: target
-        key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+    - name: Rust Cache
+      uses: Swatinem/rust-cache@v1.3.0
     - name: Build rusty-psn (windows-egui)
       run: cargo build --release --no-default-features --features "egui"
     - name: Move binary
