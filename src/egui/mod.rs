@@ -61,7 +61,7 @@ impl epi::App for UpdatesApp {
         "rusty-psn"
     }
 
-    fn update(&mut self, ctx: &egui::CtxRef, frame: &epi::Frame) {
+    fn update(&mut self, ctx: &egui::Context, frame: &epi::Frame) {
         egui::CentralPanel::default().show(ctx, | ui | {
             ui.horizontal(| ui | {
                 ui.label("Title Serial:");
