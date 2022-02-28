@@ -8,6 +8,7 @@ edition = "2018"
 [dependencies]
 reqwest = "0.11.9"
 bytesize = "1.1.0"
+copypasta = "0.7.1"
 sha1_smol = "1.0.0"
 serde-xml-rs = "0.5.1"
 

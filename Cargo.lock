@@ -1931,6 +1931,7 @@ version = "0.1.0"
 dependencies = [
  "bytesize",
  "clap",
+ "copypasta",
  "crossterm",
  "eframe",
  "poll-promise",

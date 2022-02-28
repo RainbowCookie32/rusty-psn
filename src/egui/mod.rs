@@ -1,6 +1,7 @@
 use bytesize::ByteSize;
 use eframe::{egui, epi};
 use poll_promise::Promise;
+use copypasta::{ClipboardContext, ClipboardProvider};
 
 use tokio::sync::mpsc;
 use tokio::runtime::Runtime;
@@ -22,6 +23,8 @@ pub struct ActiveDownload {
 
 pub struct UpdatesApp {
     rt: Runtime,
+    
+    clipboard: Option<Box<dyn ClipboardProvider>>,
 
     serial_query: String,
     update_results: Vec<UpdateInfo>,
@@ -38,8 +41,19 @@ pub struct UpdatesApp {
 
 impl Default for UpdatesApp {
     fn default() -> UpdatesApp {
+        let clipboard: Option<Box<dyn ClipboardProvider>> = {
+            if let Ok(clip) = ClipboardContext::new() {
+                Some(Box::new(clip))
+            }
+            else {
+                None
+            }
+        };
+
         UpdatesApp {
             rt: Runtime::new().unwrap(),
+
+            clipboard,
 
             serial_query: String::new(),
             update_results: Vec::new(),
@@ -65,7 +79,23 @@ impl epi::App for UpdatesApp {
         egui::CentralPanel::default().show(ctx, | ui | {
             ui.horizontal(| ui | {
                 ui.label("Title Serial:");
-                let input_submitted = ui.text_edit_singleline(&mut self.serial_query).lost_focus() && ui.input().key_pressed(egui::Key::Enter);
+
+                let serial_input = ui.text_edit_singleline(&mut self.serial_query);
+                let input_submitted = serial_input.lost_focus() && ui.input().key_pressed(egui::Key::Enter);
+
+                serial_input.context_menu(| ui | {
+                    ui.add_enabled_ui(self.clipboard.is_some(), | ui | {
+                        if let Some(clip_ctx) = self.clipboard.as_mut() {
+                            if ui.button("Paste").clicked() {
+                                if let Ok(contents) = clip_ctx.get_contents(){
+                                    self.serial_query.push_str(&contents);
+                                }
+
+                                ui.close_menu();
+                            }
+                        }
+                    });
+                });
 
                 ui.separator();
                 
