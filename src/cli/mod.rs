@@ -32,6 +32,10 @@ pub fn start_app() {
     let titles = args.titles[0].split(' ');
     let silent_mode = args.silent;
 
+    if silent_mode {
+        info!("App started in silent mode!");
+    }
+
     let update_info = {
         let mut info = Vec::new();
 
@@ -46,23 +50,30 @@ pub fn start_app() {
         }
 
         for (id, promise) in promises {
+            info!("Checking in on search promises");
+
             match promise.block_and_take() {
                 Ok(i) => {
-                    info.push(i.clone());
+                    info!("Successfully search for updates for {id}");
+                    info.push(i);
                 }
                 Err(e) => {
                     match e {
                         UpdateError::Serde => {
+                            error!("Failed to deserialize response for {id}");
                             println!("{id}: Error parsing response from Sony, try again later.");
                         }
                         UpdateError::InvalidSerial => {
+                            error!("Invalid serial for updates query {id}");
                             println!("{id}: The provided serial didn't give any results, double-check your input.");
                         }
                         UpdateError::NoUpdatesAvailable => {
+                            warn!("No updates available for serial {id}");
                             println!("{id}: The provided serial doesn't have any available updates.");
                         }
                         UpdateError::Reqwest(e) => {
-                            println!("{id}: There was an error on the request: {}.", e);
+                            error!("reqwest error on updates query: {e}");
+                            println!("{id}: There was an error on the request: {e}.");
                         }
                     }
                 }
@@ -123,10 +134,13 @@ pub fn start_app() {
         let mut updates_to_fetch = Vec::new();
 
         if !silent_mode {
+            info!("Querying user for wanted updates for {}", update.title_id);
             println!("\nEnter the updates you want to download, separated by a space (ie: 1 3 4 5). An empty input will download all updates.");
             
             std::io::stdin().read_line(&mut response).unwrap();
             response = response.trim().to_string();
+
+            info!("User input was '{}'", response);
 
             if !response.is_empty() {
                 updates_to_fetch = response.split(' ')
@@ -164,6 +178,8 @@ pub fn start_app() {
                 updates
             };
 
+            info!("Downloading updates {updates}");
+
             crossterm::execute!(std::io::stdout(), terminal::Clear(terminal::ClearType::All), cursor::MoveTo(0, 0)).unwrap();
             println!("{}{} - Downloading update(s): {}", update.title_id, if !title.is_empty() { format!(" ({title})") } else {String::new()}, updates);
         }
@@ -177,10 +193,22 @@ pub fn start_app() {
 
             if let Err(e) = promise.block_and_take() {
                 match e {
-                    DownloadError::HashMismatch => println!("Error downloading update: hash mismatch on downloaded file."),
-                    DownloadError::Tokio(e) => println!("Error downloading update: {e}."),
-                    DownloadError::Reqwest(e) => println!("Error downloading update: {e}."),
+                    DownloadError::HashMismatch => {
+                        error!("Download of {} {} failed: hash mismatch", update.title_id, pkg.version);
+                        println!("Error downloading update: hash mismatch on downloaded file.")
+                    }
+                    DownloadError::Tokio(e) => {
+                        error!("Download of {} {} failed: {e}", update.title_id, pkg.version);
+                        println!("Error downloading update: {e}.")
+                    }
+                    DownloadError::Reqwest(e) => {
+                        error!("Download of {} {} failed: {e}", update.title_id, pkg.version);
+                        println!("Error downloading update: {e}.")
+                    }
                 }
+            }
+            else {
+                info!("Download of {} {} completed successfully", update.title_id, pkg.version);
             }
         }
 
@@ -193,6 +221,7 @@ pub fn start_app() {
 }
 
 async fn download_pkg(title: String, serial: String, pkg: PackageInfo, silent_mode: bool) -> Result<(), DownloadError> {
+    let pkg_id = title.clone();
     let pkg_url = pkg.url.clone();
     let pkg_size = pkg.size.parse::<u64>().unwrap_or(0);
     let pkg_hash = pkg.sha1sum.clone();
@@ -222,6 +251,7 @@ async fn download_pkg(title: String, serial: String, pkg: PackageInfo, silent_mo
         while let Some(download_chunk) = response.chunk().await.map_err(DownloadError::Reqwest)? {
             let download_chunk = download_chunk.as_ref();
 
+            info!("Received a {} bytes chunk for {pkg_id} {pkg_version}", download_chunk.len());
             downloaded += download_chunk.len() as u64;
 
             if !silent_mode {
@@ -233,6 +263,8 @@ async fn download_pkg(title: String, serial: String, pkg: PackageInfo, silent_mo
             file.write_all(download_chunk).await.map_err(DownloadError::Tokio)?;
         }
 
+        info!("No more chunks available, hashing received file for {pkg_id} {pkg_version}");
+
         if !silent_mode {
             println!();
             print!("        {pkg_version} - {title} | Download completed, verifying checksum... ");
@@ -240,6 +272,8 @@ async fn download_pkg(title: String, serial: String, pkg: PackageInfo, silent_mo
         }
 
         if utils::hash_file(&mut file, &pkg_hash).await? {
+            info!("Hash for {pkg_id} {pkg_version} matched, wrapping up...");
+
             if !silent_mode {
                 println!("ok");
             }
@@ -247,6 +281,8 @@ async fn download_pkg(title: String, serial: String, pkg: PackageInfo, silent_mo
             Ok(())
         }
         else {
+            error!("Hash mismatch for {pkg_id} {pkg_version}!");
+
             if !silent_mode {
                 println!("error");
             }
@@ -255,6 +291,8 @@ async fn download_pkg(title: String, serial: String, pkg: PackageInfo, silent_mo
         }
     }
     else {
+        info!("File for {pkg_id} {pkg_version} already existed and was complete, wrapping up...");
+
         if !silent_mode {
             crossterm::execute!(stdout, cursor::RestorePosition, terminal::Clear(terminal::ClearType::CurrentLine), cursor::SavePosition).unwrap();
             println!("    {pkg_version} - {title} | Already downloaded and verified, skipping...");

@@ -31,6 +31,8 @@ impl UpdateInfo {
             .build()
             .map_err(UpdateError::Reqwest)?
         ;
+
+        info!("Querying for updates for serial: {}", title_id);
     
         let response = client.get(url).send().await.map_err(UpdateError::Reqwest)?;
         let response_txt = response.text().await.map_err(UpdateError::Reqwest)?;

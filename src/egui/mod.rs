@@ -42,11 +42,12 @@ pub struct UpdatesApp {
 impl Default for UpdatesApp {
     fn default() -> UpdatesApp {
         let clipboard: Option<Box<dyn ClipboardProvider>> = {
-            if let Ok(clip) = ClipboardContext::new() {
-                Some(Box::new(clip))
-            }
-            else {
-                None
+            match ClipboardContext::new() {
+                Ok(clip) => Some(Box::new(clip)),
+                Err(e) => {
+                    error!("Failed to init clipboard: {}", e.to_string());
+                    None
+                }
             }
         };
 
@@ -87,8 +88,9 @@ impl epi::App for UpdatesApp {
                     ui.add_enabled_ui(self.clipboard.is_some(), | ui | {
                         if let Some(clip_ctx) = self.clipboard.as_mut() {
                             if ui.button("Paste").clicked() {
-                                if let Ok(contents) = clip_ctx.get_contents(){
-                                    self.serial_query.push_str(&contents);
+                                match clip_ctx.get_contents(){
+                                    Ok(contents) => self.serial_query.push_str(&contents),
+                                    Err(e) => warn!("Failed to paste clipboard contents: {}", e.to_string())
                                 }
 
                                 ui.close_menu();
@@ -101,6 +103,8 @@ impl epi::App for UpdatesApp {
                 
                 ui.add_enabled_ui(!self.serial_query.is_empty() && self.search_promise.is_none(), | ui | {
                     if (input_submitted || ui.button("Search for updates").clicked()) && !self.update_results.iter().any(|e| e.title_id == self.serial_query) {
+                        info!("Fetching updates for '{}'", self.serial_query);
+
                         let _guard = self.rt.enter();
                         let promise = Promise::spawn_async(UpdateInfo::get_info(self.serial_query.clone()));
                         
@@ -147,8 +151,11 @@ impl epi::App for UpdatesApp {
                         };
 
                         if ui.button(format!("Download all ({})", ByteSize::b(total_updates_size))).clicked() {
+                            info!("Downloading all updates for serial {} ({})", update.title_id, update.tag.packages.len());
+
                             for pkg in update.tag.packages.iter() {
                                 if !self.download_queue.iter().any(| d | d.id == update.title_id && d.version == pkg.version) {
+                                    info!("Downloading update {} for serial {} (group)", pkg.version, update.title_id);
                                     self.start_download(update.title_id.clone(), pkg, &mut new_downloads);
                                 }
                             }
@@ -164,9 +171,13 @@ impl epi::App for UpdatesApp {
                             ui.label(format!("SHA-1 hashsum: {}", pkg.sha1sum));
 
                             ui.horizontal(| ui | {
-                                let download = self.download_queue.iter().find(| d | d.id == update.title_id && d.version == pkg.version);
+                                let download = self.download_queue
+                                    .iter()
+                                    .find(| d | d.id == update.title_id && d.version == pkg.version)
+                                ;
 
                                 if ui.add_enabled(download.is_none(), egui::Button::new("Download file")).clicked() {
+                                    info!("Downloading update {} for serial {} (individual)", pkg.version, update.title_id);
                                     self.start_download(update.title_id.clone(), pkg, &mut new_downloads);
                                 }
 
@@ -216,9 +227,11 @@ impl epi::App for UpdatesApp {
             }
         }
 
+        // Go through search promises and handle their results if ready.
         if let Some(promise) = self.search_promise.as_ref() {
             if let Some(result) = promise.ready() {
                 if let Ok(update_info) = result {
+                    info!("Received search results for serial {}", update_info.title_id);
                     self.update_results.push(update_info.clone());
                 }
                 else if let Err(e) = result {
@@ -238,6 +251,8 @@ impl epi::App for UpdatesApp {
                             self.error_msg = format!("There was an error on the request: {}", e);
                         }
                     }
+
+                    error!("Error received from updates query: {}", self.error_msg);
                 }
                 
                 self.search_promise = None;
@@ -246,19 +261,27 @@ impl epi::App for UpdatesApp {
 
         let mut entries_to_remove = Vec::new();
 
+        // Check in on active downloads.
         for (i, download) in self.download_queue.iter_mut().enumerate() {
+            // Some new bytes were downloaded, add to the total download progress.
             if let Ok(progress) = download.download_progress_rx.try_recv() {
+                info!("Recieved {progress} bytes for active download ({} {})", download.id, download.version);
                 download.download_progress += progress;
             }
 
+            // Check if the download promise is resolved (finished or failed).
             if let Some(r) = download.download_promise.ready() {
+                // Queue up for removal.
                 entries_to_remove.push(i);
 
                 match r {
                     Ok(_) => {
+                        // Add this download to the happy list of successful downloads.
                         self.completed_downloads.push((download.id.clone(), download.version.clone()));
+                        info!("Download completed! ({} {})", download.id, download.version);
                     }
                     Err(e) => {
+                        // Add this download to the sad list of failed downloads and show the error window.
                         self.show_error_window = true;
                         self.failed_downloads.push((download.id.clone(), download.version.clone()));
 
@@ -273,6 +296,8 @@ impl epi::App for UpdatesApp {
                                 self.error_msg = format!("There was an error downloading the {} update file for {}: {e}", download.version, download.id);
                             }
                         }
+
+                        error!("Error received from pkg download ({} {}): {}", download.id, download.version, self.error_msg);
                     }
                 }
             }
@@ -291,18 +316,24 @@ impl UpdatesApp {
         let (tx, rx) = tokio::sync::mpsc::channel(10);
         let serial = title_id.clone();
 
+        let pkg_id = title_id.clone();
         let pkg_url = pkg.url.clone();
         let pkg_size = pkg.size.clone();
         let pkg_hash = pkg.sha1sum.clone();
+        let pkg_version = pkg.version.clone();
 
         let _guard = self.rt.enter();
 
         let download_promise = Promise::spawn_async(async move {
             let tx = tx;
 
+            let pkg_id = pkg_id;
             let pkg_url = pkg_url;
             let pkg_size = pkg_size;
             let pkg_hash = pkg_hash;
+            let pkg_version = pkg_version;
+
+            info!("Hello from a promise for {pkg_id} {pkg_version}");
 
             let (file_name, mut response) = utils::send_pkg_request(pkg_url).await?;
             let mut file = utils::create_pkg_file(std::path::PathBuf::from(format!("pkgs/{}/{}", serial, file_name))).await?;
@@ -312,20 +343,28 @@ impl UpdatesApp {
 
                 while let Some(download_chunk) = response.chunk().await.map_err(DownloadError::Reqwest)? {
                     let download_chunk = download_chunk.as_ref();
+
+                    info!("Received a {} bytes chunk for {pkg_id} {pkg_version}", download_chunk.len());
     
                     tx.send(download_chunk.len() as u64).await.unwrap();
                     file.write_all(download_chunk).await.map_err(DownloadError::Tokio)?;
                 }
+
+                info!("No more chunks available, hashing received file for {pkg_id} {pkg_version}");
                                                 
                 if utils::hash_file(&mut file, &pkg_hash).await? {
+                    info!("Hash for {pkg_id} {pkg_version} matched, wrapping up...");
                     Ok(())
                 }
                 else {
+                    error!("Hash mismatch for {pkg_id} {pkg_version}!");
                     Err(DownloadError::HashMismatch)
                 }
             }
             else {
+                info!("File for {pkg_id} {pkg_version} already existed and was complete, wrapping up...");
                 tx.send(pkg_size.parse().unwrap_or(0)).await.unwrap();
+
                 Ok(())
             }
         });

@@ -12,6 +12,8 @@ use tokio::io::{AsyncReadExt, AsyncSeekExt, SeekFrom};
 use crate::psn::DownloadError;
 
 pub async fn send_pkg_request(url: String) -> Result<(String, Response), DownloadError> {
+    info!("Sending pkg file request to url: {}", url);
+
     let client = ClientBuilder::default()
         // Sony has funky certificates, so this needs to be enabled.
         .danger_accept_invalid_certs(true)
@@ -33,12 +35,16 @@ pub async fn send_pkg_request(url: String) -> Result<(String, Response), Downloa
         .unwrap_or_else(|| String::from("update.pkg"))
     ;
 
+    info!("Response received, file name is {file_name}");
+
     Ok((file_name, response))
 }
 
 pub async fn create_pkg_file(path: PathBuf) -> Result<File, DownloadError> {
+    info!("Creating file for pkg at path {:?}", path);
+
     match fs::create_dir_all(&path.parent().unwrap()).await {
-        Ok(_) => {},
+        Ok(_) => info!("Created directory for updates"),
         Err(e) => {
             match e.kind() {
                 io::ErrorKind::AlreadyExists => {},
