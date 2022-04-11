@@ -95,6 +95,13 @@ impl epi::App for UpdatesApp {
 
                                 ui.close_menu();
                             }
+
+                            ui.add_enabled_ui(!self.serial_query.is_empty(), |ui| {
+                                if ui.button("Clear").clicked() {
+                                    self.serial_query = String::new();
+                                    ui.close_menu();
+                                }
+                            });
                         }
                     });
                 });
