@@ -1,6 +1,9 @@
+use std::path::PathBuf;
+
 use bytesize::ByteSize;
 use eframe::{egui, epi};
 use poll_promise::Promise;
+use serde::{Deserialize, Serialize};
 use copypasta::{ClipboardContext, ClipboardProvider};
 
 use tokio::sync::mpsc;
@@ -21,7 +24,21 @@ pub struct ActiveDownload {
     download_progress_rx: mpsc::Receiver<u64>
 }
 
-pub struct UpdatesApp {
+#[derive(Clone, Deserialize, Serialize)]
+struct AppSettings {
+    pkg_download_path: PathBuf
+}
+
+impl Default for AppSettings {
+    fn default() -> AppSettings {
+        AppSettings {
+            pkg_download_path: PathBuf::from("pkgs/")
+        }
+    }
+}
+
+// Values that shouldn't be persisted from run to run.
+struct VolatileData {
     rt: Runtime,
     
     clipboard: Option<Box<dyn ClipboardProvider>>,
@@ -31,6 +48,10 @@ pub struct UpdatesApp {
 
     error_msg: String,
     show_error_window: bool,
+    show_settings_window: bool,
+
+    settings_dirty: bool,
+    modified_settings: AppSettings,
 
     download_queue: Vec<ActiveDownload>,
     failed_downloads: Vec<(String, String)>,
@@ -39,8 +60,8 @@ pub struct UpdatesApp {
     search_promise: Option<Promise<Result<UpdateInfo, UpdateError>>>
 }
 
-impl Default for UpdatesApp {
-    fn default() -> UpdatesApp {
+impl Default for VolatileData {
+    fn default() -> VolatileData {
         let clipboard: Option<Box<dyn ClipboardProvider>> = {
             match ClipboardContext::new() {
                 Ok(clip) => Some(Box::new(clip)),
@@ -51,7 +72,7 @@ impl Default for UpdatesApp {
             }
         };
 
-        UpdatesApp {
+        VolatileData {
             rt: Runtime::new().unwrap(),
 
             clipboard,
@@ -61,6 +82,10 @@ impl Default for UpdatesApp {
 
             error_msg: String::new(),
             show_error_window: false,
+            show_settings_window: false,
+
+            settings_dirty: false,
+            modified_settings: AppSettings::default(),
 
             download_queue: Vec::new(),
             failed_downloads: Vec::new(),
@@ -71,9 +96,26 @@ impl Default for UpdatesApp {
     }
 }
 
+#[derive(Default, Deserialize, Serialize)]
+pub struct UpdatesApp {
+    #[serde(skip)]
+    v: VolatileData,
+    settings: AppSettings
+}
+
 impl epi::App for UpdatesApp {
     fn name(&self) -> &str {
         "rusty-psn"
+    }
+
+    fn save(&mut self, storage: &mut dyn epi::Storage) {
+        epi::set_value(storage, epi::APP_KEY, self);
+    }
+
+    fn setup(&mut self, _ctx: &egui::Context, _frame: &epi::Frame, storage: Option<&dyn epi::Storage>) {
+        if let Some(storage) = storage {
+            *self = epi::get_value(storage, epi::APP_KEY).unwrap_or_default()
+        }
     }
 
     fn update(&mut self, ctx: &egui::Context, frame: &epi::Frame) {
@@ -81,24 +123,24 @@ impl epi::App for UpdatesApp {
             ui.horizontal(| ui | {
                 ui.label("Title Serial:");
 
-                let serial_input = ui.text_edit_singleline(&mut self.serial_query);
+                let serial_input = ui.text_edit_singleline(&mut self.v.serial_query);
                 let input_submitted = serial_input.lost_focus() && ui.input().key_pressed(egui::Key::Enter);
 
                 serial_input.context_menu(| ui | {
-                    ui.add_enabled_ui(self.clipboard.is_some(), | ui | {
-                        if let Some(clip_ctx) = self.clipboard.as_mut() {
+                    ui.add_enabled_ui(self.v.clipboard.is_some(), | ui | {
+                        if let Some(clip_ctx) = self.v.clipboard.as_mut() {
                             if ui.button("Paste").clicked() {
                                 match clip_ctx.get_contents(){
-                                    Ok(contents) => self.serial_query.push_str(&contents),
+                                    Ok(contents) => self.v.serial_query.push_str(&contents),
                                     Err(e) => warn!("Failed to paste clipboard contents: {}", e.to_string())
                                 }
 
                                 ui.close_menu();
                             }
 
-                            ui.add_enabled_ui(!self.serial_query.is_empty(), |ui| {
+                            ui.add_enabled_ui(!self.v.serial_query.is_empty(), |ui| {
                                 if ui.button("Clear").clicked() {
-                                    self.serial_query = String::new();
+                                    self.v.serial_query = String::new();
                                     ui.close_menu();
                                 }
                             });
@@ -108,22 +150,29 @@ impl epi::App for UpdatesApp {
 
                 ui.separator();
                 
-                ui.add_enabled_ui(!self.serial_query.is_empty() && self.search_promise.is_none(), | ui | {
-                    if (input_submitted || ui.button("Search for updates").clicked()) && !self.update_results.iter().any(|e| e.title_id == self.serial_query) {
-                        info!("Fetching updates for '{}'", self.serial_query);
+                ui.add_enabled_ui(!self.v.serial_query.is_empty() && self.v.search_promise.is_none(), | ui | {
+                    if (input_submitted || ui.button("Search for updates").clicked()) && !self.v.update_results.iter().any(|e| e.title_id == self.v.serial_query) {
+                        info!("Fetching updates for '{}'", self.v.serial_query);
 
-                        let _guard = self.rt.enter();
-                        let promise = Promise::spawn_async(UpdateInfo::get_info(self.serial_query.clone()));
+                        let _guard = self.v.rt.enter();
+                        let promise = Promise::spawn_async(UpdateInfo::get_info(self.v.serial_query.clone()));
                         
-                        self.search_promise = Some(promise);
+                        self.v.search_promise = Some(promise);
                     }
                 });
 
-                ui.add_enabled_ui(!self.update_results.is_empty(), | ui | {
+                ui.add_enabled_ui(!self.v.update_results.is_empty(), | ui | {
                     if ui.button("Clear results").clicked() {
-                        self.update_results = Vec::new();
+                        self.v.update_results = Vec::new();
                     }
                 });
+
+                ui.separator();
+
+                if ui.button("⚙").clicked() {
+                    self.v.modified_settings = self.settings.clone();
+                    self.v.show_settings_window = true;
+                }
             });
 
             ui.separator();
@@ -131,7 +180,7 @@ impl epi::App for UpdatesApp {
             egui::ScrollArea::vertical().auto_shrink([false; 2]).show(ui, | ui | {
                 let mut new_downloads = Vec::new();
 
-                for update in self.update_results.iter() {
+                for update in self.v.update_results.iter() {
                     let collapsing_title = {
                         if let Some(last_pkg) = update.tag.packages.last() {
                             if let Some(param) = last_pkg.paramsfo.as_ref() {
@@ -161,7 +210,7 @@ impl epi::App for UpdatesApp {
                             info!("Downloading all updates for serial {} ({})", update.title_id, update.tag.packages.len());
 
                             for pkg in update.tag.packages.iter() {
-                                if !self.download_queue.iter().any(| d | d.id == update.title_id && d.version == pkg.version) {
+                                if !self.v.download_queue.iter().any(| d | d.id == update.title_id && d.version == pkg.version) {
                                     info!("Downloading update {} for serial {} (group)", pkg.version, update.title_id);
                                     self.start_download(update.title_id.clone(), pkg, &mut new_downloads);
                                 }
@@ -178,7 +227,7 @@ impl epi::App for UpdatesApp {
                             ui.label(format!("SHA-1 hashsum: {}", pkg.sha1sum));
 
                             ui.horizontal(| ui | {
-                                let download = self.download_queue
+                                let download = self.v.download_queue
                                     .iter()
                                     .find(| d | d.id == update.title_id && d.version == pkg.version)
                                 ;
@@ -195,10 +244,10 @@ impl epi::App for UpdatesApp {
 
                                     ui.add(progress);
                                 }
-                                else if self.completed_downloads.iter().any(| (id, version) | id == &update.title_id && version == &pkg.version) {
+                                else if self.v.completed_downloads.iter().any(| (id, version) | id == &update.title_id && version == &pkg.version) {
                                     ui.label(egui::RichText::new("Completed").color(egui::color::Rgba::from_rgb(0.0, 1.0, 0.0)));
                                 }
-                                else if self.failed_downloads.iter().any(| (id, version) | id == &update.title_id && version == &pkg.version) {
+                                else if self.v.failed_downloads.iter().any(| (id, version) | id == &update.title_id && version == &pkg.version) {
                                     ui.label(egui::RichText::new("Failed").color(egui::color::Rgba::from_rgb(1.0, 0.0, 0.0)));
                                 }
                             });
@@ -209,18 +258,18 @@ impl epi::App for UpdatesApp {
                 }
 
                 for dl in new_downloads {
-                    self.download_queue.push(dl);
+                    self.v.download_queue.push(dl);
                 }
             });
         });
 
-        if !self.error_msg.is_empty() && self.show_error_window {
-            let label = self.error_msg.clone();
+        if !self.v.error_msg.is_empty() && self.v.show_error_window {
+            let label = self.v.error_msg.clone();
             // There was an attempt to properly center it :)
             let position = ctx.available_rect().center();
             let mut acknowledged = false;
 
-            egui::Window::new("An error ocurred").collapsible(false).open(&mut self.show_error_window).resizable(false).default_pos(position).show(ctx, | ui | {
+            egui::Window::new("An error ocurred").collapsible(false).open(&mut self.v.show_error_window).resizable(false).default_pos(position).show(ctx, | ui | {
                 ui.label(label);
 
                 if ui.button("Ok").clicked() {
@@ -229,47 +278,51 @@ impl epi::App for UpdatesApp {
             });
 
             if acknowledged {
-                self.show_error_window = false;
-                self.error_msg = String::new();
+                self.v.show_error_window = false;
+                self.v.error_msg = String::new();
             }
         }
 
+        if self.v.show_settings_window {
+            self.draw_settings_window(ctx);
+        }
+
         // Go through search promises and handle their results if ready.
-        if let Some(promise) = self.search_promise.as_ref() {
+        if let Some(promise) = self.v.search_promise.as_ref() {
             if let Some(result) = promise.ready() {
                 if let Ok(update_info) = result {
                     info!("Received search results for serial {}", update_info.title_id);
-                    self.update_results.push(update_info.clone());
+                    self.v.update_results.push(update_info.clone());
                 }
                 else if let Err(e) = result {
-                    self.show_error_window = true;
+                    self.v.show_error_window = true;
 
                     match e {
                         UpdateError::Serde => {
-                            self.error_msg = "Error parsing response from Sony, try again later.".to_string();
+                            self.v.error_msg = "Error parsing response from Sony, try again later.".to_string();
                         }
                         UpdateError::InvalidSerial => {
-                            self.error_msg = "The provided serial didn't give any results, double-check your input.".to_string();
+                            self.v.error_msg = "The provided serial didn't give any results, double-check your input.".to_string();
                         }
                         UpdateError::NoUpdatesAvailable => {
-                            self.error_msg = "The provided serial doesn't have any available updates.".to_string();
+                            self.v.error_msg = "The provided serial doesn't have any available updates.".to_string();
                         }
                         UpdateError::Reqwest(e) => {
-                            self.error_msg = format!("There was an error on the request: {}", e);
+                            self.v.error_msg = format!("There was an error on the request: {}", e);
                         }
                     }
 
-                    error!("Error received from updates query: {}", self.error_msg);
+                    error!("Error received from updates query: {}", self.v.error_msg);
                 }
                 
-                self.search_promise = None;
+                self.v.search_promise = None;
             }
         }
 
         let mut entries_to_remove = Vec::new();
 
         // Check in on active downloads.
-        for (i, download) in self.download_queue.iter_mut().enumerate() {
+        for (i, download) in self.v.download_queue.iter_mut().enumerate() {
             // Some new bytes were downloaded, add to the total download progress.
             if let Ok(progress) = download.download_progress_rx.try_recv() {
                 info!("Recieved {progress} bytes for active download ({} {})", download.id, download.version);
@@ -284,34 +337,34 @@ impl epi::App for UpdatesApp {
                 match r {
                     Ok(_) => {
                         // Add this download to the happy list of successful downloads.
-                        self.completed_downloads.push((download.id.clone(), download.version.clone()));
+                        self.v.completed_downloads.push((download.id.clone(), download.version.clone()));
                         info!("Download completed! ({} {})", download.id, download.version);
                     }
                     Err(e) => {
                         // Add this download to the sad list of failed downloads and show the error window.
-                        self.show_error_window = true;
-                        self.failed_downloads.push((download.id.clone(), download.version.clone()));
+                        self.v.show_error_window = true;
+                        self.v.failed_downloads.push((download.id.clone(), download.version.clone()));
 
                         match e {
                             DownloadError::HashMismatch => {
-                                self.error_msg = format!("There was an error downloading the {} update file for {}: The hash for the downloaded file doesn't match.", download.version, download.id);
+                                self.v.error_msg = format!("There was an error downloading the {} update file for {}: The hash for the downloaded file doesn't match.", download.version, download.id);
                             }
                             DownloadError::Tokio(e) => {
-                                self.error_msg = format!("There was an error downloading the {} update file for {}: {e}", download.version, download.id);
+                                self.v.error_msg = format!("There was an error downloading the {} update file for {}: {e}", download.version, download.id);
                             }
                             DownloadError::Reqwest(e) => {
-                                self.error_msg = format!("There was an error downloading the {} update file for {}: {e}", download.version, download.id);
+                                self.v.error_msg = format!("There was an error downloading the {} update file for {}: {e}", download.version, download.id);
                             }
                         }
 
-                        error!("Error received from pkg download ({} {}): {}", download.id, download.version, self.error_msg);
+                        error!("Error received from pkg download ({} {}): {}", download.id, download.version, self.v.error_msg);
                     }
                 }
             }
         }
 
         for (removed_entries, entry) in entries_to_remove.into_iter().enumerate() {
-            self.download_queue.remove(entry - removed_entries);
+            self.v.download_queue.remove(entry - removed_entries);
         }
 
         frame.request_repaint();
@@ -329,9 +382,13 @@ impl UpdatesApp {
         let pkg_hash = pkg.sha1sum.clone();
         let pkg_version = pkg.version.clone();
 
-        let _guard = self.rt.enter();
+        let _guard = self.v.rt.enter();
+
+        let base_path = self.settings.pkg_download_path.clone();
 
         let download_promise = Promise::spawn_async(async move {
+            info!("Hello from a promise for {pkg_id} {pkg_version}");
+
             let tx = tx;
 
             let pkg_id = pkg_id;
@@ -339,11 +396,12 @@ impl UpdatesApp {
             let pkg_size = pkg_size;
             let pkg_hash = pkg_hash;
             let pkg_version = pkg_version;
-
-            info!("Hello from a promise for {pkg_id} {pkg_version}");
-
             let (file_name, mut response) = utils::send_pkg_request(pkg_url).await?;
-            let mut file = utils::create_pkg_file(std::path::PathBuf::from(format!("pkgs/{}/{}", serial, file_name))).await?;
+
+            let mut download_path = base_path;
+            download_path.push(format!("{serial}/{file_name}"));
+
+            let mut file = utils::create_pkg_file(download_path).await?;
 
             if !utils::hash_file(&mut file, &pkg_hash).await? {
                 file.set_len(0).await.map_err(DownloadError::Tokio)?;
@@ -388,5 +446,62 @@ impl UpdatesApp {
         };
 
         downloads_queue.push(dl);
+    }
+
+    fn draw_settings_window(&mut self, ctx: &egui::Context) {
+        let settings_dirty = self.v.settings_dirty;
+
+        let mut new_download_path = None;
+        let mut current_download_path = self.v.modified_settings.pkg_download_path.to_string_lossy().to_string();
+
+        let mut save_clicked = false;
+        let mut discard_clicked = false;
+        let mut reset_defaults_clicked = false;
+
+        egui::Window::new("Setings").open(&mut self.v.show_settings_window).resizable(true).show(ctx, | ui | {
+            ui.label("Download Path");
+            ui.horizontal(| ui | {
+                ui.add_enabled_ui(false, | ui | {
+                    ui.text_edit_singleline(&mut current_download_path);
+                });
+
+                if ui.button("Pick folder").clicked() {
+                    new_download_path = rfd::FileDialog::new().pick_folder();
+                }
+
+                if ui.button("Reset").clicked() {
+                    new_download_path = Some(PathBuf::from("/pkgs"));
+                }
+            });
+
+            ui.with_layout(egui::Layout::bottom_up(egui::Align::TOP), | ui | {
+                ui.horizontal(| ui | {
+                    save_clicked = ui.button("Save settings").clicked();
+                    discard_clicked = ui.add_enabled(settings_dirty, egui::Button::new("Discard changes")).clicked();
+                    reset_defaults_clicked = ui.button("Restore to defaults").clicked();
+                });
+
+                ui.separator();
+            });
+        });
+
+        if let Some(path) = new_download_path {
+            self.v.settings_dirty = true;
+            self.v.modified_settings.pkg_download_path = path;
+        }
+
+        if save_clicked {
+            self.settings = self.v.modified_settings.clone();
+            self.v.show_settings_window = false;
+        }
+        else if discard_clicked {
+            self.v.modified_settings = self.settings.clone();
+            self.v.show_settings_window = false;
+        }
+        else if reset_defaults_clicked {
+            self.settings = AppSettings::default();
+            self.v.modified_settings = AppSettings::default();
+            self.v.show_settings_window = false;
+        }
     }
 }

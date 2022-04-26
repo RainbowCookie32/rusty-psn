@@ -16,8 +16,10 @@ log = "0.4.16"
 simplelog = "0.11.2"
 
 clap = { version = "3.1.8", optional = true, features = ["derive"] }
-eframe = { version = "0.17.0", features = ["persistence"], optional = true }
 crossterm = { version = "0.23.2", optional = true }
+
+rfd = { version = "0.8.2", optional = true }
+eframe = { version = "0.17.0", features = ["persistence"], optional = true }
 
 poll-promise = { version = "0.1.0", features = ["tokio"] }
 serde = { version = "1.0.136", default-features = false, features = ["derive"] }
@@ -26,4 +28,4 @@ tokio = { version = "1.17.0", default-features = false, features = ["rt", "io-ut
 [features]
 default = ["egui"]
 cli = ["clap", "crossterm"]
-egui = ["eframe"]
+egui = ["rfd", "eframe"]
