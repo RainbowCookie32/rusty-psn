@@ -24,7 +24,7 @@ pub struct ActiveDownload {
     download_progress_rx: mpsc::Receiver<u64>
 }
 
-#[derive(Deserialize, Serialize)]
+#[derive(Clone, Deserialize, Serialize)]
 struct AppSettings {
     pkg_download_path: PathBuf
 }
@@ -48,6 +48,10 @@ struct VolatileData {
 
     error_msg: String,
     show_error_window: bool,
+    show_settings_window: bool,
+
+    settings_dirty: bool,
+    modified_settings: AppSettings,
 
     download_queue: Vec<ActiveDownload>,
     failed_downloads: Vec<(String, String)>,
@@ -78,6 +82,10 @@ impl Default for VolatileData {
 
             error_msg: String::new(),
             show_error_window: false,
+            show_settings_window: false,
+
+            settings_dirty: false,
+            modified_settings: AppSettings::default(),
 
             download_queue: Vec::new(),
             failed_downloads: Vec::new(),
@@ -91,7 +99,8 @@ impl Default for VolatileData {
 #[derive(Default, Deserialize, Serialize)]
 pub struct UpdatesApp {
     #[serde(skip)]
-    v: VolatileData
+    v: VolatileData,
+    settings: AppSettings
 }
 
 impl epi::App for UpdatesApp {
@@ -157,6 +166,13 @@ impl epi::App for UpdatesApp {
                         self.v.update_results = Vec::new();
                     }
                 });
+
+                ui.separator();
+
+                if ui.button("⚙").clicked() {
+                    self.v.modified_settings = self.settings.clone();
+                    self.v.show_settings_window = true;
+                }
             });
 
             ui.separator();
@@ -267,6 +283,10 @@ impl epi::App for UpdatesApp {
             }
         }
 
+        if self.v.show_settings_window {
+            self.draw_settings_window(ctx);
+        }
+
         // Go through search promises and handle their results if ready.
         if let Some(promise) = self.v.search_promise.as_ref() {
             if let Some(result) = promise.ready() {
@@ -364,7 +384,11 @@ impl UpdatesApp {
 
         let _guard = self.v.rt.enter();
 
+        let base_path = self.settings.pkg_download_path.clone();
+
         let download_promise = Promise::spawn_async(async move {
+            info!("Hello from a promise for {pkg_id} {pkg_version}");
+
             let tx = tx;
 
             let pkg_id = pkg_id;
@@ -372,11 +396,12 @@ impl UpdatesApp {
             let pkg_size = pkg_size;
             let pkg_hash = pkg_hash;
             let pkg_version = pkg_version;
-
-            info!("Hello from a promise for {pkg_id} {pkg_version}");
-            
             let (file_name, mut response) = utils::send_pkg_request(pkg_url).await?;
-            let mut file = utils::create_pkg_file(std::path::PathBuf::from(format!("pkgs/{}/{}", serial, file_name))).await?;
+
+            let mut download_path = base_path;
+            download_path.push(format!("{serial}/{file_name}"));
+
+            let mut file = utils::create_pkg_file(download_path).await?;
 
             if !utils::hash_file(&mut file, &pkg_hash).await? {
                 file.set_len(0).await.map_err(DownloadError::Tokio)?;
@@ -421,5 +446,62 @@ impl UpdatesApp {
         };
 
         downloads_queue.push(dl);
+    }
+
+    fn draw_settings_window(&mut self, ctx: &egui::Context) {
+        let settings_dirty = self.v.settings_dirty;
+
+        let mut new_download_path = None;
+        let mut current_download_path = self.v.modified_settings.pkg_download_path.to_string_lossy().to_string();
+
+        let mut save_clicked = false;
+        let mut discard_clicked = false;
+        let mut reset_defaults_clicked = false;
+
+        egui::Window::new("Setings").open(&mut self.v.show_settings_window).resizable(true).show(ctx, | ui | {
+            ui.label("Download Path");
+            ui.horizontal(| ui | {
+                ui.add_enabled_ui(false, | ui | {
+                    ui.text_edit_singleline(&mut current_download_path);
+                });
+
+                if ui.button("Pick folder").clicked() {
+                    new_download_path = rfd::FileDialog::new().pick_folder();
+                }
+
+                if ui.button("Reset").clicked() {
+                    new_download_path = Some(PathBuf::from("/pkgs"));
+                }
+            });
+
+            ui.with_layout(egui::Layout::bottom_up(egui::Align::TOP), | ui | {
+                ui.horizontal(| ui | {
+                    save_clicked = ui.button("Save settings").clicked();
+                    discard_clicked = ui.add_enabled(settings_dirty, egui::Button::new("Discard changes")).clicked();
+                    reset_defaults_clicked = ui.button("Restore to defaults").clicked();
+                });
+
+                ui.separator();
+            });
+        });
+
+        if let Some(path) = new_download_path {
+            self.v.settings_dirty = true;
+            self.v.modified_settings.pkg_download_path = path;
+        }
+
+        if save_clicked {
+            self.settings = self.v.modified_settings.clone();
+            self.v.show_settings_window = false;
+        }
+        else if discard_clicked {
+            self.v.modified_settings = self.settings.clone();
+            self.v.show_settings_window = false;
+        }
+        else if reset_defaults_clicked {
+            self.settings = AppSettings::default();
+            self.v.modified_settings = AppSettings::default();
+            self.v.show_settings_window = false;
+        }
     }
 }
