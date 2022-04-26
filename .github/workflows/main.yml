@@ -30,7 +30,7 @@ jobs:
     - name: Rust Cache
       uses: Swatinem/rust-cache@v1.3.0
     - name: Install egui deps
-      run: sudo apt update && sudo apt-get install libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev libspeechd-dev libxkbcommon-dev libssl-dev
+      run: sudo apt update && sudo apt-get install libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev libspeechd-dev libxkbcommon-dev libssl-dev libgtk-3-dev
     - name: Build rusty-psn (linux-egui)
       run: cargo build --release --no-default-features --features "egui"
     - name: Move binary
