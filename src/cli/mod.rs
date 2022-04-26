@@ -1,4 +1,5 @@
 use std::io::Write;
+use std::path::PathBuf;
 
 use clap::Parser;
 use bytesize::ByteSize;
@@ -20,7 +21,9 @@ struct Args {
     #[clap(short, long, required = true, help = "The serial(s) you want to search for, in quotes and separated by spaces")]
     titles: Vec<String>,
     #[clap(short, long, help = "Downloads all available updates printing only errors, without needing user intervention.")]
-    silent: bool
+    silent: bool,
+    #[clap(short, long, help = "Target folder to save the downloaded update files to.")]
+    destination_path: Option<PathBuf>
 }
 
 pub fn start_app() {
@@ -31,6 +34,7 @@ pub fn start_app() {
 
     let titles = args.titles[0].split(' ');
     let silent_mode = args.silent;
+    let destination_path = args.destination_path.unwrap_or_else(|| PathBuf::from("pkgs/"));
 
     if silent_mode {
         info!("App started in silent mode!");
@@ -189,7 +193,7 @@ pub fn start_app() {
                 continue;
             }
 
-            let promise = Promise::spawn_async(download_pkg(title.clone(), update.title_id.clone(), pkg.clone(), silent_mode));
+            let promise = Promise::spawn_async(download_pkg(destination_path.clone(), title.clone(), update.title_id.clone(), pkg.clone(), silent_mode));
 
             if let Err(e) = promise.block_and_take() {
                 match e {
@@ -220,7 +224,7 @@ pub fn start_app() {
     }
 }
 
-async fn download_pkg(title: String, serial: String, pkg: PackageInfo, silent_mode: bool) -> Result<(), DownloadError> {
+async fn download_pkg(mut pkg_path: PathBuf, title: String, serial: String, pkg: PackageInfo, silent_mode: bool) -> Result<(), DownloadError> {
     let pkg_id = title.clone();
     let pkg_url = pkg.url.clone();
     let pkg_size = pkg.size.parse::<u64>().unwrap_or(0);
@@ -230,7 +234,7 @@ async fn download_pkg(title: String, serial: String, pkg: PackageInfo, silent_mo
     let mut stdout = std::io::stdout();
 
     let (file_name, mut response) = utils::send_pkg_request(pkg_url).await?;
-    let pkg_path = std::path::PathBuf::from(format!("pkgs/{}/{}", serial, file_name));
+    pkg_path.push(format!("{}/{}", serial, file_name));
 
     if !silent_mode {
         crossterm::execute!(stdout, cursor::SavePosition).unwrap();
