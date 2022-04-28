@@ -212,7 +212,7 @@ impl epi::App for UpdatesApp {
                             for pkg in update.tag.packages.iter() {
                                 if !self.v.download_queue.iter().any(| d | d.id == update.title_id && d.version == pkg.version) {
                                     info!("Downloading update {} for serial {} (group)", pkg.version, update.title_id);
-                                    self.start_download(update.title_id.clone(), pkg, &mut new_downloads);
+                                    self.start_download(update.title_id.clone(), pkg.clone(), &mut new_downloads);
                                 }
                             }
                         }
@@ -234,7 +234,7 @@ impl epi::App for UpdatesApp {
 
                                 if ui.add_enabled(download.is_none(), egui::Button::new("Download file")).clicked() {
                                     info!("Downloading update {} for serial {} (individual)", pkg.version, update.title_id);
-                                    self.start_download(update.title_id.clone(), pkg, &mut new_downloads);
+                                    self.start_download(update.title_id.clone(), pkg.clone(), &mut new_downloads);
                                 }
 
                                 if let Some(download) = download {
@@ -372,63 +372,55 @@ impl epi::App for UpdatesApp {
 }
 
 impl UpdatesApp {
-    fn start_download(&self, title_id: String, pkg: &PackageInfo, downloads_queue: &mut Vec<ActiveDownload>) {
+    fn start_download(&self, title_id: String, pkg: PackageInfo, downloads_queue: &mut Vec<ActiveDownload>) {
         let (tx, rx) = tokio::sync::mpsc::channel(10);
         let serial = title_id.clone();
-
-        let pkg_id = title_id.clone();
-        let pkg_url = pkg.url.clone();
-        let pkg_size = pkg.size.clone();
-        let pkg_hash = pkg.sha1sum.clone();
-        let pkg_version = pkg.version.clone();
+        let version = pkg.version.clone();
+        let download_size = pkg.size.parse().unwrap_or(0);
+        let base_path = self.settings.pkg_download_path.clone();
 
         let _guard = self.v.rt.enter();
 
-        let base_path = self.settings.pkg_download_path.clone();
-
         let download_promise = Promise::spawn_async(async move {
-            info!("Hello from a promise for {pkg_id} {pkg_version}");
+            let serial = serial;
+
+            info!("Hello from a promise for {serial} {}", pkg.version);
 
             let tx = tx;
-
-            let pkg_id = pkg_id;
-            let pkg_url = pkg_url;
-            let pkg_size = pkg_size;
-            let pkg_hash = pkg_hash;
-            let pkg_version = pkg_version;
-            let (file_name, mut response) = utils::send_pkg_request(pkg_url).await?;
+            let pkg = pkg;
+            let (file_name, mut response) = utils::send_pkg_request(pkg.url).await?;
 
             let mut download_path = base_path;
             download_path.push(format!("{serial}/{file_name}"));
 
             let mut file = utils::create_pkg_file(download_path).await?;
 
-            if !utils::hash_file(&mut file, &pkg_hash).await? {
+            if !utils::hash_file(&mut file, &pkg.sha1sum).await? {
                 file.set_len(0).await.map_err(DownloadError::Tokio)?;
 
                 while let Some(download_chunk) = response.chunk().await.map_err(DownloadError::Reqwest)? {
                     let download_chunk = download_chunk.as_ref();
 
-                    info!("Received a {} bytes chunk for {pkg_id} {pkg_version}", download_chunk.len());
+                    info!("Received a {} bytes chunk for {serial} {}", download_chunk.len(), pkg.version);
     
                     tx.send(download_chunk.len() as u64).await.unwrap();
                     file.write_all(download_chunk).await.map_err(DownloadError::Tokio)?;
                 }
 
-                info!("No more chunks available, hashing received file for {pkg_id} {pkg_version}");
+                info!("No more chunks available, hashing received file for {serial} {}", pkg.version);
                                                 
-                if utils::hash_file(&mut file, &pkg_hash).await? {
-                    info!("Hash for {pkg_id} {pkg_version} matched, wrapping up...");
+                if utils::hash_file(&mut file, &pkg.sha1sum).await? {
+                    info!("Hash for {serial} {} matched, wrapping up...", pkg.version);
                     Ok(())
                 }
                 else {
-                    error!("Hash mismatch for {pkg_id} {pkg_version}!");
+                    error!("Hash mismatch for {serial} {}!", pkg.version);
                     Err(DownloadError::HashMismatch)
                 }
             }
             else {
-                info!("File for {pkg_id} {pkg_version} already existed and was complete, wrapping up...");
-                tx.send(pkg_size.parse().unwrap_or(0)).await.unwrap();
+                info!("File for {serial} {} already existed and was complete, wrapping up...", pkg.version);
+                tx.send(pkg.size.parse().unwrap_or(0)).await.unwrap();
 
                 Ok(())
             }
@@ -436,9 +428,9 @@ impl UpdatesApp {
 
         let dl = ActiveDownload {
             id: title_id,
-            version: pkg.version.clone(),
+            version,
 
-            download_size: pkg.size.parse().unwrap_or(0),
+            download_size,
             download_progress: 0,
 
             download_promise,
