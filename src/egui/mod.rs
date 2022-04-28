@@ -17,11 +17,11 @@ pub struct ActiveDownload {
     id: String,
     version: String,
 
-    download_size: u64,
-    download_progress: u64,
+    size: u64,
+    progress: u64,
 
-    download_promise: Promise<Result<(), DownloadError>>,
-    download_progress_rx: mpsc::Receiver<u64>
+    promise: Promise<Result<(), DownloadError>>,
+    progress_rx: mpsc::Receiver<u64>
 }
 
 #[derive(Clone, Deserialize, Serialize)]
@@ -238,7 +238,7 @@ impl epi::App for UpdatesApp {
                                 }
 
                                 if let Some(download) = download {
-                                    let progress = egui::ProgressBar::new(download.download_progress as f32 / download.download_size as f32)
+                                    let progress = egui::ProgressBar::new(download.progress as f32 / download.size as f32)
                                         .show_percentage()
                                     ;
 
@@ -269,7 +269,14 @@ impl epi::App for UpdatesApp {
             let position = ctx.available_rect().center();
             let mut acknowledged = false;
 
-            egui::Window::new("An error ocurred").collapsible(false).open(&mut self.v.show_error_window).resizable(false).default_pos(position).show(ctx, | ui | {
+            let error_window = egui::Window::new("An error ocurred")
+                .collapsible(false)
+                .open(&mut self.v.show_error_window)
+                .resizable(false)
+                .default_pos(position)
+            ;
+
+            error_window.show(ctx, | ui | {
                 ui.label(label);
 
                 if ui.button("Ok").clicked() {
@@ -324,13 +331,13 @@ impl epi::App for UpdatesApp {
         // Check in on active downloads.
         for (i, download) in self.v.download_queue.iter_mut().enumerate() {
             // Some new bytes were downloaded, add to the total download progress.
-            if let Ok(progress) = download.download_progress_rx.try_recv() {
+            if let Ok(progress) = download.progress_rx.try_recv() {
                 info!("Recieved {progress} bytes for active download ({} {})", download.id, download.version);
-                download.download_progress += progress;
+                download.progress += progress;
             }
 
             // Check if the download promise is resolved (finished or failed).
-            if let Some(r) = download.download_promise.ready() {
+            if let Some(r) = download.promise.ready() {
                 // Queue up for removal.
                 entries_to_remove.push(i);
 
@@ -430,11 +437,11 @@ impl UpdatesApp {
             id: title_id,
             version,
 
-            download_size,
-            download_progress: 0,
+            size: download_size,
+            progress: 0,
 
-            download_promise,
-            download_progress_rx: rx
+            promise: download_promise,
+            progress_rx: rx
         };
 
         downloads_queue.push(dl);
