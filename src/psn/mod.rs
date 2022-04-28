@@ -59,7 +59,7 @@ pub struct UpdateTag {
 #[derive(Clone, Deserialize)]
 pub struct PackageInfo {
     pub url: String,
-    pub size: String,
+    pub size: u64,
     pub version: String,
     pub sha1sum: String,
 

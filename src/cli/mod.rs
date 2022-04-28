@@ -110,7 +110,7 @@ pub fn start_app() {
                     let mut total = 0;
     
                     for pkg in update.tag.packages.iter() {
-                        total += pkg.size.parse::<u64>().unwrap_or(0);
+                        total += pkg.size;
                     }
     
                     ByteSize::b(total)
@@ -130,7 +130,7 @@ pub fn start_app() {
             println!("{}", update_text);
 
             for (i, pkg) in update.tag.packages.iter().enumerate() {
-                println!("  {i}. {} ({})", pkg.version, ByteSize::b(pkg.size.parse().unwrap_or(0)));
+                println!("  {i}. {} ({})", pkg.version, ByteSize::b(pkg.size));
             }
         }
 
@@ -227,7 +227,7 @@ pub fn start_app() {
 async fn download_pkg(mut pkg_path: PathBuf, title: String, serial: String, pkg: PackageInfo, silent_mode: bool) -> Result<(), DownloadError> {
     let pkg_id = title.clone();
     let pkg_url = pkg.url.clone();
-    let pkg_size = pkg.size.parse::<u64>().unwrap_or(0);
+    let pkg_size = pkg.size;
     let pkg_hash = pkg.sha1sum.clone();
     let pkg_version = pkg.version.clone();
 
