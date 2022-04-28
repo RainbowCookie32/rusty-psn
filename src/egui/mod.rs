@@ -501,6 +501,8 @@ impl UpdatesApp {
             });
         });
 
-        self.v.show_settings_window = show_window;
+        if !show_window {
+            self.v.show_settings_window = false;
+        }
     }
 }
