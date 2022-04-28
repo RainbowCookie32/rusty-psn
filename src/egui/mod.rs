@@ -253,15 +253,14 @@ impl UpdatesApp {
         let _guard = self.v.rt.enter();
 
         let download_promise = Promise::spawn_async(async move {
+            let tx = tx;
+            let pkg = pkg;
             let serial = serial;
+            let mut download_path = base_path;
 
             info!("Hello from a promise for {serial} {}", pkg.version);
 
-            let tx = tx;
-            let pkg = pkg;
             let (file_name, mut response) = utils::send_pkg_request(pkg.url).await?;
-
-            let mut download_path = base_path;
             download_path.push(format!("{serial}/{file_name}"));
 
             let mut file = utils::create_pkg_file(download_path).await?;
