@@ -449,16 +449,10 @@ impl UpdatesApp {
     }
 
     fn draw_settings_window(&mut self, ctx: &egui::Context) {
-        let settings_dirty = self.v.settings_dirty;
-
-        let mut new_download_path = None;
+        let mut show_window = self.v.show_settings_window;
         let mut current_download_path = self.v.modified_settings.pkg_download_path.to_string_lossy().to_string();
 
-        let mut save_clicked = false;
-        let mut discard_clicked = false;
-        let mut reset_defaults_clicked = false;
-
-        egui::Window::new("Setings").open(&mut self.v.show_settings_window).resizable(true).show(ctx, | ui | {
+        egui::Window::new("Setings").open(&mut show_window).resizable(true).show(ctx, | ui | {
             ui.label("Download Path");
             ui.horizontal(| ui | {
                 ui.add_enabled_ui(false, | ui | {
@@ -466,42 +460,47 @@ impl UpdatesApp {
                 });
 
                 if ui.button("Pick folder").clicked() {
-                    new_download_path = rfd::FileDialog::new().pick_folder();
+                    if let Some(path) = rfd::FileDialog::new().pick_folder() {
+                        self.v.settings_dirty = true;
+                        self.v.modified_settings.pkg_download_path = path;
+                    }
                 }
 
                 if ui.button("Reset").clicked() {
-                    new_download_path = Some(PathBuf::from("/pkgs"));
+                    self.v.settings_dirty = true;
+                    self.v.modified_settings.pkg_download_path = PathBuf::from("/pkgs");
                 }
             });
 
             ui.with_layout(egui::Layout::bottom_up(egui::Align::TOP), | ui | {
                 ui.horizontal(| ui | {
-                    save_clicked = ui.button("Save settings").clicked();
-                    discard_clicked = ui.add_enabled(settings_dirty, egui::Button::new("Discard changes")).clicked();
-                    reset_defaults_clicked = ui.button("Restore to defaults").clicked();
+                    if ui.button("Save settings").clicked() {
+                        self.v.settings_dirty = false;
+                        self.v.show_settings_window = false;
+
+                        self.settings = self.v.modified_settings.clone();
+                    }
+
+                    if ui.add_enabled(self.v.settings_dirty, egui::Button::new("Discard changes")).clicked() {
+                        self.v.settings_dirty = false;
+                        self.v.show_settings_window = false;
+
+                        self.v.modified_settings = self.settings.clone();
+                    }
+
+                    if ui.button("Restore to defaults").clicked() {
+                        self.v.settings_dirty = false;
+                        self.v.show_settings_window = false;
+                        
+                        self.settings = AppSettings::default();
+                        self.v.modified_settings = AppSettings::default();
+                    }
                 });
 
                 ui.separator();
             });
         });
 
-        if let Some(path) = new_download_path {
-            self.v.settings_dirty = true;
-            self.v.modified_settings.pkg_download_path = path;
-        }
-
-        if save_clicked {
-            self.settings = self.v.modified_settings.clone();
-            self.v.show_settings_window = false;
-        }
-        else if discard_clicked {
-            self.v.modified_settings = self.settings.clone();
-            self.v.show_settings_window = false;
-        }
-        else if reset_defaults_clicked {
-            self.settings = AppSettings::default();
-            self.v.modified_settings = AppSettings::default();
-            self.v.show_settings_window = false;
-        }
+        self.v.show_settings_window = show_window;
     }
 }
