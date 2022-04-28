@@ -247,7 +247,7 @@ impl UpdatesApp {
         let (tx, rx) = tokio::sync::mpsc::channel(10);
         let serial = title_id.clone();
         let version = pkg.version.clone();
-        let download_size = pkg.size.parse().unwrap_or(0);
+        let download_size = pkg.size;
         let base_path = self.settings.pkg_download_path.clone();
 
         let _guard = self.v.rt.enter();
@@ -291,7 +291,7 @@ impl UpdatesApp {
             }
             else {
                 info!("File for {serial} {} already existed and was complete, wrapping up...", pkg.version);
-                tx.send(pkg.size.parse().unwrap_or(0)).await.unwrap();
+                tx.send(pkg.size).await.unwrap();
 
                 Ok(())
             }
@@ -341,7 +341,9 @@ impl UpdatesApp {
             ui.separator();
             
             ui.add_enabled_ui(!self.v.serial_query.is_empty() && self.v.search_promise.is_none(), | ui | {
-                if (input_submitted || ui.button("Search for updates").clicked()) && !self.v.update_results.iter().any(|e| e.title_id == self.v.serial_query) {
+                let already_searched = self.v.update_results.iter().any(|e| e.title_id == self.v.serial_query);
+
+                if (input_submitted || ui.button("Search for updates").clicked()) && !already_searched {
                     info!("Fetching updates for '{}'", self.v.serial_query);
 
                     let _guard = self.v.rt.enter();
@@ -403,7 +405,7 @@ impl UpdatesApp {
                 let mut size = 0;
 
                 for pkg in update.tag.packages.iter() {
-                    size += pkg.size.parse::<u64>().unwrap_or(0);
+                    size += pkg.size;
                 }
 
                 size
@@ -435,7 +437,7 @@ impl UpdatesApp {
     fn draw_entry_pkg(&self, ui: &mut egui::Ui, pkg: &PackageInfo, title_id: &str) -> Option<ActiveDownload> {
         let mut download = None;
 
-        let bytes = pkg.size.parse::<u64>().unwrap_or(0);
+        let bytes = pkg.size;
                     
         ui.strong(format!("Package Version: {}", pkg.version));
         ui.label(format!("Size: {}", ByteSize::b(bytes)));
