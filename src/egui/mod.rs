@@ -9,7 +9,7 @@ use copypasta::{ClipboardContext, ClipboardProvider};
 use tokio::sync::mpsc;
 use tokio::runtime::Runtime;
 
-use crate::psn::{DownloadError, UpdateError, UpdateInfo, PackageInfo};
+use crate::psn::*;
 
 pub struct ActiveDownload {
     id: String,
@@ -17,9 +17,11 @@ pub struct ActiveDownload {
 
     size: u64,
     progress: u64,
+    // TODO: Can be used to show status of the download on UI.
+    last_received_status: DownloadStatus,
 
-    promise: Promise<Result<u64, DownloadError>>,
-    progress_rx: mpsc::Receiver<u64>
+    promise: Promise<Result<(), DownloadError>>,
+    progress_rx: mpsc::Receiver<DownloadStatus>
 }
 
 #[derive(Clone, Deserialize, Serialize)]
@@ -192,10 +194,13 @@ impl epi::App for UpdatesApp {
 
         // Check in on active downloads.
         for (i, download) in self.v.download_queue.iter_mut().enumerate() {
-            // Some new bytes were downloaded, add to the total download progress.
-            if let Ok(progress) = download.progress_rx.try_recv() {
-                info!("Recieved {progress} bytes for active download ({} {})", download.id, download.version);
-                download.progress += progress;
+            if let Ok(status) = download.progress_rx.try_recv() {
+                if let DownloadStatus::Progress(progress) = status {
+                    info!("Received {progress} bytes for active download ({} {})", download.id, download.version);
+                    download.progress += progress;
+                }
+
+                download.last_received_status = status;
             }
 
             // Check if the download promise is resolved (finished or failed).
@@ -262,6 +267,7 @@ impl UpdatesApp {
 
             size: download_size,
             progress: 0,
+            last_received_status: DownloadStatus::Verifying,
 
             promise: download_promise,
             progress_rx: rx

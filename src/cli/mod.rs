@@ -7,7 +7,7 @@ use poll_promise::Promise;
 use tokio::runtime::Runtime;
 use crossterm::{cursor, terminal};
 
-use crate::psn::{DownloadError, UpdateError, UpdateInfo};
+use crate::psn::*;
 
 #[derive(Debug, Parser)]
 #[clap(author, version, about)]
@@ -191,42 +191,24 @@ pub fn start_app() {
             let mut stdout = std::io::stdout();
             let mut downloaded = 0;
 
+            crossterm::execute!(stdout, cursor::SavePosition).unwrap();
+
             loop {
                 match promise.ready() {
                     Some(result) => {
-                        match result {
-                            Ok(bytes) => {
-                                if *bytes == 0 {
-                                    info!("File for {} {} already existed and was complete, wrapping up...", update.title_id, pkg.version);
-
-                                    if !silent_mode {
-                                        crossterm::execute!(stdout, cursor::RestorePosition, terminal::Clear(terminal::ClearType::CurrentLine), cursor::SavePosition).unwrap();
-                                        println!("    {} - {title} | Already downloaded and verified, skipping...", pkg.version);
-                                        stdout.flush().unwrap();
-                                    }
+                        if let Err(e) = result {
+                            match e {
+                                DownloadError::HashMismatch => {
+                                    error!("Download of {} {} failed: hash mismatch", update.title_id, pkg.version);
+                                    println!("Error downloading update: hash mismatch on downloaded file.")
                                 }
-                                else {
-                                    println!();
-                                    print!("        {} - {title} | Download completed, verifying checksum... ", pkg.version);
-                                    stdout.flush().unwrap();
+                                DownloadError::Tokio(e) => {
+                                    error!("Download of {} {} failed: {e}", update.title_id, pkg.version);
+                                    println!("Error downloading update: {e}.")
                                 }
-
-                                info!("Download of {} {} was completed successfully", update.title_id, pkg.version);
-                            }
-                            Err(e) => {
-                                match e {
-                                    DownloadError::HashMismatch => {
-                                        error!("Download of {} {} failed: hash mismatch", update.title_id, pkg.version);
-                                        println!("Error downloading update: hash mismatch on downloaded file.")
-                                    }
-                                    DownloadError::Tokio(e) => {
-                                        error!("Download of {} {} failed: {e}", update.title_id, pkg.version);
-                                        println!("Error downloading update: {e}.")
-                                    }
-                                    DownloadError::Reqwest(e) => {
-                                        error!("Download of {} {} failed: {e}", update.title_id, pkg.version);
-                                        println!("Error downloading update: {e}.")
-                                    }
+                                DownloadError::Reqwest(e) => {
+                                    error!("Download of {} {} failed: {e}", update.title_id, pkg.version);
+                                    println!("Error downloading update: {e}.")
                                 }
                             }
                         }
@@ -234,14 +216,39 @@ pub fn start_app() {
                         break;
                     }
                     None => {
-                        if let Ok(bytes) = rx.try_recv() {
-                            info!("Received a {} bytes chunk for {} {}", bytes, update.title_id, pkg.version);
-                            downloaded += bytes;
-                
-                            if !silent_mode {
-                                crossterm::execute!(stdout, cursor::RestorePosition, terminal::Clear(terminal::ClearType::CurrentLine), cursor::SavePosition).unwrap();
-                                print!("    {} - {title} | {} / {}", pkg.version, ByteSize::b(downloaded), ByteSize::b(pkg.size));
-                                stdout.flush().unwrap();
+                        if let Ok(status) = rx.try_recv() {
+                            match status {
+                                DownloadStatus::Progress(bytes) => {
+                                    downloaded += bytes;
+
+                                    if !silent_mode {
+                                        crossterm::execute!(stdout, cursor::RestorePosition, terminal::Clear(terminal::ClearType::CurrentLine), cursor::SavePosition).unwrap();
+                                        print!("        {} - {title} | {} / {}", pkg.version, ByteSize::b(downloaded), ByteSize::b(pkg.size));
+                                        stdout.flush().unwrap();
+                                    }
+                                }
+                                DownloadStatus::Verifying => {
+                                    if !silent_mode {
+                                        crossterm::execute!(stdout, cursor::RestorePosition, terminal::Clear(terminal::ClearType::CurrentLine), cursor::SavePosition).unwrap();
+                                        print!("        {} - {title} | Verifying checksum... ", pkg.version);
+                                        stdout.flush().unwrap();
+                                    }
+                                    
+                                }
+                                DownloadStatus::DownloadSuccess => {
+                                    if !silent_mode {
+                                        crossterm::execute!(stdout, cursor::RestorePosition, terminal::Clear(terminal::ClearType::CurrentLine), cursor::SavePosition).unwrap();
+                                        println!("        {} - {title} | Download completed successfully. ", pkg.version);
+                                        stdout.flush().unwrap();
+                                    }
+                                }
+                                DownloadStatus::DownloadFailure => {
+                                    if !silent_mode {
+                                        crossterm::execute!(stdout, cursor::RestorePosition, terminal::Clear(terminal::ClearType::CurrentLine), cursor::SavePosition).unwrap();
+                                        println!("        {} - {title} | Download failed. ", pkg.version);
+                                        stdout.flush().unwrap();
+                                    }
+                                }
                             }
                         }
                     }

@@ -4,6 +4,15 @@ use serde::Deserialize;
 use tokio::io::AsyncWriteExt;
 use tokio::sync::mpsc::Sender;
 
+#[derive(Debug)]
+pub enum DownloadStatus {
+    Progress(u64),
+    
+    Verifying,
+    DownloadSuccess,
+    DownloadFailure
+}
+
 pub enum DownloadError {
     HashMismatch,
     Tokio(tokio::io::Error),
@@ -71,7 +80,7 @@ pub struct PackageInfo {
 }
 
 impl PackageInfo {
-    pub async fn start_download(&self, tx: Sender<u64>, serial: String, mut download_path: PathBuf) -> Result<u64, DownloadError> {
+    pub async fn start_download(&self, tx: Sender<DownloadStatus>, serial: String, mut download_path: PathBuf) -> Result<(), DownloadError> {
         info!("Starting download for for {serial} {}", self.version);
         info!("Sending pkg file request to url: {}", &self.url);
 
@@ -99,38 +108,45 @@ impl PackageInfo {
         info!("Response received, file name is {file_name}");
         download_path.push(format!("{serial}/{file_name}"));
 
-        let mut downloaded = 0;
         let mut pkg_file = crate::utils::create_pkg_file(download_path).await?;
+
+        tx.send(DownloadStatus::Verifying).await.unwrap();
 
         if !crate::utils::hash_file(&mut pkg_file, &self.sha1sum).await? {
             pkg_file.set_len(0).await.map_err(DownloadError::Tokio)?;
 
             while let Some(download_chunk) = response.chunk().await.map_err(DownloadError::Reqwest)? {
                 let download_chunk = download_chunk.as_ref();
+                let download_chunk_len = download_chunk.len() as u64;
 
-                info!("Received a {} bytes chunk for {serial} {}", download_chunk.len(), self.version);
+                info!("Received a {} bytes chunk for {serial} {}", download_chunk_len, self.version);
 
-                downloaded += download_chunk.len() as u64;
-                tx.send(download_chunk.len() as u64).await.unwrap();
+                tx.send(DownloadStatus::Progress(download_chunk_len)).await.unwrap();
                 pkg_file.write_all(download_chunk).await.map_err(DownloadError::Tokio)?;
             }
 
             info!("No more chunks available, hashing received file for {serial} {}", self.version);
+
+            tx.send(DownloadStatus::Verifying).await.unwrap();
                                             
             if crate::utils::hash_file(&mut pkg_file, &self.sha1sum).await? {
                 info!("Hash for {serial} {} matched, wrapping up...", self.version);
-                Ok(downloaded)
+                tx.send(DownloadStatus::DownloadSuccess).await.unwrap();
+
+                Ok(())
             }
             else {
                 error!("Hash mismatch for {serial} {}!", self.version);
+                tx.send(DownloadStatus::DownloadFailure).await.unwrap();
+
                 Err(DownloadError::HashMismatch)
             }
         }
         else {
             info!("File for {serial} {} already existed and was complete, wrapping up...", self.version);
-            tx.send(self.size).await.unwrap();
+            tx.send(DownloadStatus::DownloadSuccess).await.unwrap();
 
-            Ok(downloaded)
+            Ok(())
         }
     }
 }
