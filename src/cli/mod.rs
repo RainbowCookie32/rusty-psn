@@ -62,7 +62,7 @@ pub fn start_app() {
                     match e {
                         UpdateError::Serde => {
                             error!("Failed to deserialize response for {id}");
-                            println!("{id}: Error parsing response from Sony, try again later.");
+                            println!("{id}: Error parsing response from PSN, try again later.");
                         }
                         UpdateError::InvalidSerial => {
                             error!("Invalid serial for updates query {id}");
@@ -91,40 +91,30 @@ pub fn start_app() {
                     param.titles[0].clone()
                 }
                 else {
-                    String::new()
+                    warn!("Failed to get update's title: Last pkg's info didn't contain a title");
+                    String::from("Untitled")
                 }
             }
             else {
-                String::new()
+                warn!("Failed to get update's title: Couldn't get the last pkg's info");
+                String::from("Untitled")
             }
         };
 
         if !silent_mode {
             crossterm::execute!(std::io::stdout(), terminal::Clear(terminal::ClearType::All), cursor::MoveTo(0, 0)).unwrap();
 
-            let update_text = {
-                let total_size = {
-                    let mut total = 0;
-    
-                    for pkg in update.tag.packages.iter() {
-                        total += pkg.size;
-                    }
-    
-                    ByteSize::b(total)
-                };
-    
-                let pkgs = update.tag.packages.len();
-                let updates_count = format!("{} update{}", pkgs, if pkgs > 1 {"s"} else {""});
+            let total_size = {
+                let mut total = 0;
 
-                if title.is_empty() {
-                    format!("{} - {} ({})", update.title_id, updates_count, total_size)
+                for pkg in update.tag.packages.iter() {
+                    total += pkg.size;
                 }
-                else {
-                    format!("{} - {} - {} ({})", update.title_id, &title, updates_count, total_size)
-                }
+
+                ByteSize::b(total)
             };
     
-            println!("{}", update_text);
+            println!("{} - {} - {} update(s) ({})", update.title_id, &title, update.tag.packages.len(), total_size);
 
             for (i, pkg) in update.tag.packages.iter().enumerate() {
                 println!("  {i}. {} ({})", pkg.version, ByteSize::b(pkg.size));
@@ -182,7 +172,7 @@ pub fn start_app() {
             info!("Downloading updates {updates}");
 
             crossterm::execute!(std::io::stdout(), terminal::Clear(terminal::ClearType::All), cursor::MoveTo(0, 0)).unwrap();
-            println!("{}{} - Downloading update(s): {}", update.title_id, if !title.is_empty() { format!(" ({title})") } else {String::new()}, updates);
+            println!("{} {} - Downloading update(s): {}", update.title_id, title, updates);
         }
         
         for (idx, pkg) in update.tag.packages.iter().enumerate() {
@@ -190,7 +180,15 @@ pub fn start_app() {
                 continue;
             }
 
-            let promise = Promise::spawn_async(download_pkg(destination_path.clone(), title.clone(), update.title_id.clone(), pkg.clone(), silent_mode));
+            let promise = Promise::spawn_async(
+                download_pkg(
+                    destination_path.clone(),
+                    title.clone(),
+                    update.title_id.clone(),
+                    pkg.clone(),
+                    silent_mode
+                )
+            );
 
             if let Err(e) = promise.block_and_take() {
                 match e {
@@ -209,7 +207,7 @@ pub fn start_app() {
                 }
             }
             else {
-                info!("Download of {} {} completed successfully", update.title_id, pkg.version);
+                info!("Download of {} {} was completed successfully", update.title_id, pkg.version);
             }
         }
 
