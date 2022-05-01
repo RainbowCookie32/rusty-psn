@@ -70,30 +70,30 @@ impl PackageInfo {
     pub async fn start_transfer(&self) -> Result<(String, reqwest::Response), DownloadError> {
         info!("Sending pkg file request to url: {}", &self.url);
 
-    let client = reqwest::ClientBuilder::default()
-        // Sony has funky certificates, so this needs to be enabled.
-        .danger_accept_invalid_certs(true)
-        .build()
-        .map_err(DownloadError::Reqwest)?
-    ;
+        let client = reqwest::ClientBuilder::default()
+            // Sony has funky certificates, so this needs to be enabled.
+            .danger_accept_invalid_certs(true)
+            .build()
+            .map_err(DownloadError::Reqwest)?
+        ;
 
-    let response = client.get(&self.url)
-        .send()
-        .await
-        .map_err(DownloadError::Reqwest)?
-    ;
+        let response = client.get(&self.url)
+            .send()
+            .await
+            .map_err(DownloadError::Reqwest)?
+        ;
 
-    let file_name = response
-        .url()
-        .path_segments()
-        .and_then(|s| s.last())
-        .and_then(|n| if n.is_empty() { None } else { Some(n.to_string()) })
-        .unwrap_or_else(|| String::from("update.pkg"))
-    ;
+        let file_name = response
+            .url()
+            .path_segments()
+            .and_then(|s| s.last())
+            .and_then(|n| if n.is_empty() { None } else { Some(n.to_string()) })
+            .unwrap_or_else(|| String::from("update.pkg"))
+        ;
 
-    info!("Response received, file name is {file_name}");
+        info!("Response received, file name is {file_name}");
 
-    Ok((file_name, response))
+        Ok((file_name, response))
     }
 }
 
