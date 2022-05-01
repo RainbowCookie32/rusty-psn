@@ -8,9 +8,7 @@ use copypasta::{ClipboardContext, ClipboardProvider};
 
 use tokio::sync::mpsc;
 use tokio::runtime::Runtime;
-use tokio::io::AsyncWriteExt;
 
-use crate::utils;
 use crate::psn::{DownloadError, UpdateError, UpdateInfo, PackageInfo};
 
 pub struct ActiveDownload {
@@ -20,7 +18,7 @@ pub struct ActiveDownload {
     size: u64,
     progress: u64,
 
-    promise: Promise<Result<(), DownloadError>>,
+    promise: Promise<Result<u64, DownloadError>>,
     progress_rx: mpsc::Receiver<u64>
 }
 
@@ -248,53 +246,15 @@ impl UpdatesApp {
         let serial = title_id.clone();
         let version = pkg.version.clone();
         let download_size = pkg.size;
-        let base_path = self.settings.pkg_download_path.clone();
+        let download_path = self.settings.pkg_download_path.clone();
 
         let _guard = self.v.rt.enter();
 
-        let download_promise = Promise::spawn_async(async move {
-            let tx = tx;
-            let pkg = pkg;
-            let serial = serial;
-            let mut download_path = base_path;
-
-            info!("Hello from a promise for {serial} {}", pkg.version);
-
-            let (file_name, mut response) = pkg.start_transfer().await?;
-            download_path.push(format!("{serial}/{file_name}"));
-
-            let mut file = utils::create_pkg_file(download_path).await?;
-
-            if !utils::hash_file(&mut file, &pkg.sha1sum).await? {
-                file.set_len(0).await.map_err(DownloadError::Tokio)?;
-
-                while let Some(download_chunk) = response.chunk().await.map_err(DownloadError::Reqwest)? {
-                    let download_chunk = download_chunk.as_ref();
-
-                    info!("Received a {} bytes chunk for {serial} {}", download_chunk.len(), pkg.version);
-    
-                    tx.send(download_chunk.len() as u64).await.unwrap();
-                    file.write_all(download_chunk).await.map_err(DownloadError::Tokio)?;
-                }
-
-                info!("No more chunks available, hashing received file for {serial} {}", pkg.version);
-                                                
-                if utils::hash_file(&mut file, &pkg.sha1sum).await? {
-                    info!("Hash for {serial} {} matched, wrapping up...", pkg.version);
-                    Ok(())
-                }
-                else {
-                    error!("Hash mismatch for {serial} {}!", pkg.version);
-                    Err(DownloadError::HashMismatch)
-                }
+        let download_promise = Promise::spawn_async(
+            async move {
+                pkg.start_download(tx, serial, download_path).await
             }
-            else {
-                info!("File for {serial} {} already existed and was complete, wrapping up...", pkg.version);
-                tx.send(pkg.size).await.unwrap();
-
-                Ok(())
-            }
-        });
+        );
 
         ActiveDownload {
             id: title_id,

@@ -4,13 +4,10 @@ use std::path::PathBuf;
 use clap::Parser;
 use bytesize::ByteSize;
 use poll_promise::Promise;
+use tokio::runtime::Runtime;
 use crossterm::{cursor, terminal};
 
-use tokio::runtime::Runtime;
-use tokio::io::AsyncWriteExt;
-
-use crate::utils;
-use crate::psn::{DownloadError, UpdateError, UpdateInfo, PackageInfo};
+use crate::psn::{DownloadError, UpdateError, UpdateInfo};
 
 #[derive(Debug, Parser)]
 #[clap(author, version, about)]
@@ -180,34 +177,75 @@ pub fn start_app() {
                 continue;
             }
 
+            let (tx, mut rx) = tokio::sync::mpsc::channel(10);
+            let serial = update.title_id.clone();
+            let download_path = destination_path.clone();
+
+            let dpkg = pkg.clone();
             let promise = Promise::spawn_async(
-                download_pkg(
-                    destination_path.clone(),
-                    title.clone(),
-                    update.title_id.clone(),
-                    pkg.clone(),
-                    silent_mode
-                )
+                async move {
+                    dpkg.start_download(tx, serial, download_path).await
+                }
             );
 
-            if let Err(e) = promise.block_and_take() {
-                match e {
-                    DownloadError::HashMismatch => {
-                        error!("Download of {} {} failed: hash mismatch", update.title_id, pkg.version);
-                        println!("Error downloading update: hash mismatch on downloaded file.")
+            let mut stdout = std::io::stdout();
+            let mut downloaded = 0;
+
+            loop {
+                match promise.ready() {
+                    Some(result) => {
+                        match result {
+                            Ok(bytes) => {
+                                if *bytes == 0 {
+                                    info!("File for {} {} already existed and was complete, wrapping up...", update.title_id, pkg.version);
+
+                                    if !silent_mode {
+                                        crossterm::execute!(stdout, cursor::RestorePosition, terminal::Clear(terminal::ClearType::CurrentLine), cursor::SavePosition).unwrap();
+                                        println!("    {} - {title} | Already downloaded and verified, skipping...", pkg.version);
+                                        stdout.flush().unwrap();
+                                    }
+                                }
+                                else {
+                                    println!();
+                                    print!("        {} - {title} | Download completed, verifying checksum... ", pkg.version);
+                                    stdout.flush().unwrap();
+                                }
+
+                                info!("Download of {} {} was completed successfully", update.title_id, pkg.version);
+                            }
+                            Err(e) => {
+                                match e {
+                                    DownloadError::HashMismatch => {
+                                        error!("Download of {} {} failed: hash mismatch", update.title_id, pkg.version);
+                                        println!("Error downloading update: hash mismatch on downloaded file.")
+                                    }
+                                    DownloadError::Tokio(e) => {
+                                        error!("Download of {} {} failed: {e}", update.title_id, pkg.version);
+                                        println!("Error downloading update: {e}.")
+                                    }
+                                    DownloadError::Reqwest(e) => {
+                                        error!("Download of {} {} failed: {e}", update.title_id, pkg.version);
+                                        println!("Error downloading update: {e}.")
+                                    }
+                                }
+                            }
+                        }
+
+                        break;
                     }
-                    DownloadError::Tokio(e) => {
-                        error!("Download of {} {} failed: {e}", update.title_id, pkg.version);
-                        println!("Error downloading update: {e}.")
-                    }
-                    DownloadError::Reqwest(e) => {
-                        error!("Download of {} {} failed: {e}", update.title_id, pkg.version);
-                        println!("Error downloading update: {e}.")
+                    None => {
+                        if let Ok(bytes) = rx.try_recv() {
+                            info!("Received a {} bytes chunk for {} {}", bytes, update.title_id, pkg.version);
+                            downloaded += bytes;
+                
+                            if !silent_mode {
+                                crossterm::execute!(stdout, cursor::RestorePosition, terminal::Clear(terminal::ClearType::CurrentLine), cursor::SavePosition).unwrap();
+                                print!("    {} - {title} | {} / {}", pkg.version, ByteSize::b(downloaded), ByteSize::b(pkg.size));
+                                stdout.flush().unwrap();
+                            }
+                        }
                     }
                 }
-            }
-            else {
-                info!("Download of {} {} was completed successfully", update.title_id, pkg.version);
             }
         }
 
@@ -216,87 +254,5 @@ pub fn start_app() {
         if !silent_mode {
             crossterm::execute!(std::io::stdout(), terminal::Clear(terminal::ClearType::All), cursor::MoveTo(0, 0)).unwrap();
         }
-    }
-}
-
-async fn download_pkg(mut pkg_path: PathBuf, title: String, serial: String, pkg: PackageInfo, silent_mode: bool) -> Result<(), DownloadError> {
-    let pkg_id = title.clone();
-    let pkg_size = pkg.size;
-    let pkg_hash = pkg.sha1sum.clone();
-    let pkg_version = pkg.version.clone();
-
-    let mut stdout = std::io::stdout();
-
-    let (file_name, mut response) = pkg.start_transfer().await?;
-    pkg_path.push(format!("{}/{}", serial, file_name));
-
-    if !silent_mode {
-        crossterm::execute!(stdout, cursor::SavePosition).unwrap();
-
-        if pkg_path.exists() {
-            print!("    {pkg_version} - {title} | File already exists, verifying checksum... ");
-            stdout.flush().unwrap();
-        }
-    }
-
-    let mut file = utils::create_pkg_file(pkg_path.clone()).await?;
-    
-    if !utils::hash_file(&mut file, &pkg_hash).await? {
-        let mut downloaded = 0;
-
-        file.set_len(0).await.map_err(DownloadError::Tokio)?;
-
-        while let Some(download_chunk) = response.chunk().await.map_err(DownloadError::Reqwest)? {
-            let download_chunk = download_chunk.as_ref();
-
-            info!("Received a {} bytes chunk for {pkg_id} {pkg_version}", download_chunk.len());
-            downloaded += download_chunk.len() as u64;
-
-            if !silent_mode {
-                crossterm::execute!(stdout, cursor::RestorePosition, terminal::Clear(terminal::ClearType::CurrentLine), cursor::SavePosition).unwrap();
-                print!("    {pkg_version} - {title} | {} / {}", ByteSize::b(downloaded), ByteSize::b(pkg_size));
-                stdout.flush().unwrap();
-            }
-            
-            file.write_all(download_chunk).await.map_err(DownloadError::Tokio)?;
-        }
-
-        info!("No more chunks available, hashing received file for {pkg_id} {pkg_version}");
-
-        if !silent_mode {
-            println!();
-            print!("        {pkg_version} - {title} | Download completed, verifying checksum... ");
-            stdout.flush().unwrap();
-        }
-
-        if utils::hash_file(&mut file, &pkg_hash).await? {
-            info!("Hash for {pkg_id} {pkg_version} matched, wrapping up...");
-
-            if !silent_mode {
-                println!("ok");
-            }
-            
-            Ok(())
-        }
-        else {
-            error!("Hash mismatch for {pkg_id} {pkg_version}!");
-
-            if !silent_mode {
-                println!("error");
-            }
-
-            Err(DownloadError::HashMismatch)
-        }
-    }
-    else {
-        info!("File for {pkg_id} {pkg_version} already existed and was complete, wrapping up...");
-
-        if !silent_mode {
-            crossterm::execute!(stdout, cursor::RestorePosition, terminal::Clear(terminal::ClearType::CurrentLine), cursor::SavePosition).unwrap();
-            println!("    {pkg_version} - {title} | Already downloaded and verified, skipping...");
-            stdout.flush().unwrap();
-        }
-        
-        Ok(())
     }
 }
