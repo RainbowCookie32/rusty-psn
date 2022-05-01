@@ -4,16 +4,13 @@ use std::path::PathBuf;
 use clap::Parser;
 use bytesize::ByteSize;
 use poll_promise::Promise;
+use crossterm::{cursor, terminal};
 
 use tokio::runtime::Runtime;
 use tokio::io::AsyncWriteExt;
 
-use crossterm::cursor;
-use crossterm::terminal;
-
-use crate::psn::PackageInfo;
 use crate::utils;
-use crate::psn::{DownloadError, UpdateError, UpdateInfo};
+use crate::psn::{DownloadError, UpdateError, UpdateInfo, PackageInfo};
 
 #[derive(Debug, Parser)]
 #[clap(author, version, about)]
