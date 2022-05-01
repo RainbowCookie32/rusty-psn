@@ -226,14 +226,13 @@ pub fn start_app() {
 
 async fn download_pkg(mut pkg_path: PathBuf, title: String, serial: String, pkg: PackageInfo, silent_mode: bool) -> Result<(), DownloadError> {
     let pkg_id = title.clone();
-    let pkg_url = pkg.url.clone();
     let pkg_size = pkg.size;
     let pkg_hash = pkg.sha1sum.clone();
     let pkg_version = pkg.version.clone();
 
     let mut stdout = std::io::stdout();
 
-    let (file_name, mut response) = utils::send_pkg_request(pkg_url).await?;
+    let (file_name, mut response) = pkg.start_transfer().await?;
     pkg_path.push(format!("{}/{}", serial, file_name));
 
     if !silent_mode {

@@ -260,7 +260,7 @@ impl UpdatesApp {
 
             info!("Hello from a promise for {serial} {}", pkg.version);
 
-            let (file_name, mut response) = utils::send_pkg_request(pkg.url).await?;
+            let (file_name, mut response) = pkg.start_transfer().await?;
             download_path.push(format!("{serial}/{file_name}"));
 
             let mut file = utils::create_pkg_file(download_path).await?;
