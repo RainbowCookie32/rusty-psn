@@ -8,10 +8,8 @@ use copypasta::{ClipboardContext, ClipboardProvider};
 
 use tokio::sync::mpsc;
 use tokio::runtime::Runtime;
-use tokio::io::AsyncWriteExt;
 
-use crate::utils;
-use crate::psn::{DownloadError, UpdateError, UpdateInfo, PackageInfo};
+use crate::psn::*;
 
 pub struct ActiveDownload {
     id: String,
@@ -19,9 +17,11 @@ pub struct ActiveDownload {
 
     size: u64,
     progress: u64,
+    // TODO: Can be used to show status of the download on UI.
+    last_received_status: DownloadStatus,
 
     promise: Promise<Result<(), DownloadError>>,
-    progress_rx: mpsc::Receiver<u64>
+    progress_rx: mpsc::Receiver<DownloadStatus>
 }
 
 #[derive(Clone, Deserialize, Serialize)]
@@ -194,10 +194,13 @@ impl epi::App for UpdatesApp {
 
         // Check in on active downloads.
         for (i, download) in self.v.download_queue.iter_mut().enumerate() {
-            // Some new bytes were downloaded, add to the total download progress.
-            if let Ok(progress) = download.progress_rx.try_recv() {
-                info!("Recieved {progress} bytes for active download ({} {})", download.id, download.version);
-                download.progress += progress;
+            if let Ok(status) = download.progress_rx.try_recv() {
+                if let DownloadStatus::Progress(progress) = status {
+                    info!("Received {progress} bytes for active download ({} {})", download.id, download.version);
+                    download.progress += progress;
+                }
+
+                download.last_received_status = status;
             }
 
             // Check if the download promise is resolved (finished or failed).
@@ -248,53 +251,15 @@ impl UpdatesApp {
         let serial = title_id.clone();
         let version = pkg.version.clone();
         let download_size = pkg.size;
-        let base_path = self.settings.pkg_download_path.clone();
+        let download_path = self.settings.pkg_download_path.clone();
 
         let _guard = self.v.rt.enter();
 
-        let download_promise = Promise::spawn_async(async move {
-            let tx = tx;
-            let pkg = pkg;
-            let serial = serial;
-            let mut download_path = base_path;
-
-            info!("Hello from a promise for {serial} {}", pkg.version);
-
-            let (file_name, mut response) = utils::send_pkg_request(pkg.url).await?;
-            download_path.push(format!("{serial}/{file_name}"));
-
-            let mut file = utils::create_pkg_file(download_path).await?;
-
-            if !utils::hash_file(&mut file, &pkg.sha1sum).await? {
-                file.set_len(0).await.map_err(DownloadError::Tokio)?;
-
-                while let Some(download_chunk) = response.chunk().await.map_err(DownloadError::Reqwest)? {
-                    let download_chunk = download_chunk.as_ref();
-
-                    info!("Received a {} bytes chunk for {serial} {}", download_chunk.len(), pkg.version);
-    
-                    tx.send(download_chunk.len() as u64).await.unwrap();
-                    file.write_all(download_chunk).await.map_err(DownloadError::Tokio)?;
-                }
-
-                info!("No more chunks available, hashing received file for {serial} {}", pkg.version);
-                                                
-                if utils::hash_file(&mut file, &pkg.sha1sum).await? {
-                    info!("Hash for {serial} {} matched, wrapping up...", pkg.version);
-                    Ok(())
-                }
-                else {
-                    error!("Hash mismatch for {serial} {}!", pkg.version);
-                    Err(DownloadError::HashMismatch)
-                }
+        let download_promise = Promise::spawn_async(
+            async move {
+                pkg.start_download(tx, serial, download_path).await
             }
-            else {
-                info!("File for {serial} {} already existed and was complete, wrapping up...", pkg.version);
-                tx.send(pkg.size).await.unwrap();
-
-                Ok(())
-            }
-        });
+        );
 
         ActiveDownload {
             id: title_id,
@@ -302,6 +267,7 @@ impl UpdatesApp {
 
             size: download_size,
             progress: 0,
+            last_received_status: DownloadStatus::Verifying,
 
             promise: download_promise,
             progress_rx: rx
