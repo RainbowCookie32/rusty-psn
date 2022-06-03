@@ -17,6 +17,15 @@ dnf install clang clang-devel clang-tools-extra speech-dispatcher-devel libxkbco
 sudo pacman -S libxcb libxkbcommon
 ```
 
+## Docker
+
+Use the supplied Dockerfile to run the rusty-psn CLI on Linux or macOS.
+Build and run as follows:
+
+```
+docker build . -t rusty-psn
+docker run --rm -v ${PWD}/pkgs:/rusty-psn/pkgs rusty-psn
+```
 ---
 
 ## Screenshots
