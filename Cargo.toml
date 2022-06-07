@@ -19,7 +19,7 @@ clap = { version = "3.1.18", optional = true, features = ["derive"] }
 crossterm = { version = "0.23.2", optional = true }
 
 rfd = { version = "0.8.2", optional = true }
-eframe = { version = "0.17.0", features = ["persistence"], optional = true }
+eframe = { version = "0.18.0", features = ["dark-light", "persistence"], optional = true }
 
 poll-promise = { version = "0.1.0", features = ["tokio"] }
 serde = { version = "1.0.137", default-features = false, features = ["derive"] }
