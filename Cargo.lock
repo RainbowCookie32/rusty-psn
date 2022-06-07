@@ -1629,18 +1629,6 @@ dependencies = [
 ]
 
 [[package]]
-<<<<<<< HEAD
-name = "ntapi"
-version = "0.3.7"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c28774a7fd2fbb4f0babd8237ce554b73af68021b5f695a3cebd6c59bac0980f"
-dependencies = [
- "winapi",
-]
-
-[[package]]
-=======
->>>>>>> f8679a3 (update dependencies)
 name = "num_cpus"
 version = "1.13.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1784,11 +1772,7 @@ dependencies = [
 name = "os_str_bytes"
 version = "6.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-<<<<<<< HEAD
-checksum = "8e22443d1643a904602595ba1cd8f7d896afe56d26712531c5ff73a15b2fbf64"
-=======
 checksum = "21326818e99cfe6ce1e524c2a805c189a99b5ae555a35d19f9a284b427d86afa"
->>>>>>> f8679a3 (update dependencies)
 
 [[package]]
 name = "osmesa-sys"
@@ -2532,15 +2516,6 @@ dependencies = [
 [[package]]
 name = "time-macros"
 version = "0.2.4"
-<<<<<<< HEAD
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "42657b1a6f4d817cda8e7a0ace261fe0cc946cf3a80314390b22cc61ae080792"
-
-[[package]]
-name = "tinyvec"
-version = "1.5.1"
-=======
->>>>>>> f8679a3 (update dependencies)
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "42657b1a6f4d817cda8e7a0ace261fe0cc946cf3a80314390b22cc61ae080792"
 
