@@ -26,6 +26,11 @@ fn main() {
     #[cfg(feature = "egui")]
     {
         info!("starting egui app");
-        eframe::run_native(Box::new(egui::UpdatesApp::default()), eframe::NativeOptions::default());
+
+        eframe::run_native(
+            "rusty-psn",
+            eframe::NativeOptions::default(),
+            Box::new(|cc| Box::new(egui::UpdatesApp::new(cc)))
+        )
     }
 }

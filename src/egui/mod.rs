@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 
+use eframe::egui;
 use bytesize::ByteSize;
-use eframe::{egui, epi};
 use poll_promise::Promise;
 use serde::{Deserialize, Serialize};
 use copypasta::{ClipboardContext, ClipboardProvider};
@@ -103,22 +103,12 @@ pub struct UpdatesApp {
     settings: AppSettings
 }
 
-impl epi::App for UpdatesApp {
-    fn name(&self) -> &str {
-        "rusty-psn"
+impl eframe::App for UpdatesApp {
+    fn save(&mut self, storage: &mut dyn eframe::Storage) {
+        eframe::set_value(storage, eframe::APP_KEY, self);
     }
 
-    fn save(&mut self, storage: &mut dyn epi::Storage) {
-        epi::set_value(storage, epi::APP_KEY, self);
-    }
-
-    fn setup(&mut self, _ctx: &egui::Context, _frame: &epi::Frame, storage: Option<&dyn epi::Storage>) {
-        if let Some(storage) = storage {
-            *self = epi::get_value(storage, epi::APP_KEY).unwrap_or_default()
-        }
-    }
-
-    fn update(&mut self, ctx: &egui::Context, frame: &epi::Frame) {
+    fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         egui::CentralPanel::default().show(ctx, | ui | {
             self.draw_search_bar(ui);
 
@@ -241,11 +231,20 @@ impl epi::App for UpdatesApp {
             self.v.download_queue.remove(entry - removed_entries);
         }
 
-        frame.request_repaint();
+        ctx.request_repaint();
     }
 }
 
 impl UpdatesApp {
+    pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
+        if let Some(storage) = cc.storage {
+            eframe::get_value(storage, eframe::APP_KEY).unwrap_or_default()
+        }
+        else {
+            Default::default()
+        }
+    }
+
     fn start_download(&self, title_id: String, pkg: PackageInfo) -> ActiveDownload {
         let (tx, rx) = tokio::sync::mpsc::channel(10);
         let serial = title_id.clone();
