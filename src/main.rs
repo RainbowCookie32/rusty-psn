@@ -10,9 +10,9 @@ mod egui;
 fn main() {
     if let Ok(log_file) = std::fs::File::create("session_log.log") {
         let mut config = simplelog::ConfigBuilder::default();
-        config.set_location_level(simplelog::LevelFilter::Error);
+        config.set_location_level(simplelog::LevelFilter::Trace);
 
-        if let Err(e) = simplelog::WriteLogger::init(simplelog::LevelFilter::Info, config.build(), log_file) {
+        if let Err(e) = simplelog::WriteLogger::init(simplelog::LevelFilter::Trace, config.build(), log_file) {
             println!("failed to set up logging: {}", e);
         }
     }
@@ -25,7 +25,7 @@ fn main() {
     
     #[cfg(feature = "egui")]
     {
-        info!("starting egui app");
+        info!("Starting rusty-psn with egui.");
 
         eframe::run_native(
             "rusty-psn",

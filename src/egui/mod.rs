@@ -62,6 +62,8 @@ struct VolatileData {
 
 impl Default for VolatileData {
     fn default() -> VolatileData {
+        info!("Initializing default VolatileData struct");
+
         let clipboard: Option<Box<dyn ClipboardProvider>> = {
             match ClipboardContext::new() {
                 Ok(clip) => Some(Box::new(clip)),
@@ -71,6 +73,8 @@ impl Default for VolatileData {
                 }
             }
         };
+
+        info!("Clipboard stuff done.");
 
         VolatileData {
             rt: Runtime::new().unwrap(),
@@ -105,10 +109,13 @@ pub struct UpdatesApp {
 
 impl eframe::App for UpdatesApp {
     fn save(&mut self, storage: &mut dyn eframe::Storage) {
+        info!("Saving persistent data");
         eframe::set_value(storage, eframe::APP_KEY, self);
     }
 
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        info!("Time for a new frame");
+
         egui::CentralPanel::default().show(ctx, | ui | {
             self.draw_search_bar(ui);
 
@@ -232,15 +239,20 @@ impl eframe::App for UpdatesApp {
         }
 
         ctx.request_repaint();
+        info!("Frame completed.");
     }
 }
 
 impl UpdatesApp {
     pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
+        info!("Initializing UpdatesApp object");
+
         if let Some(storage) = cc.storage {
+            info!("Storage available, trying to deserialize existing data.");
             eframe::get_value(storage, eframe::APP_KEY).unwrap_or_default()
         }
         else {
+            warn!("Storage unavailable, running with defaults!");
             Default::default()
         }
     }
