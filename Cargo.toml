@@ -15,7 +15,7 @@ serde-xml-rs = "0.5.1"
 log = "0.4.17"
 simplelog = "0.12.0"
 
-clap = { version = "3.2.7", optional = true, features = ["derive"] }
+clap = { version = "3.2.8", optional = true, features = ["derive"] }
 crossterm = { version = "0.23.2", optional = true }
 
 rfd = { version = "0.9.1", optional = true }
