@@ -114,7 +114,7 @@ impl eframe::App for UpdatesApp {
 
             ui.separator();
 
-            self.draw_results_list(ui);
+            self.draw_results_list(ctx, ui);
         });
 
         if !self.v.error_msg.is_empty() && self.v.show_error_window {
@@ -332,12 +332,12 @@ impl UpdatesApp {
         });
     }
 
-    fn draw_results_list(&mut self, ui: &mut egui::Ui) {
+    fn draw_results_list(&mut self, ctx: &egui::Context, ui: &mut egui::Ui) {
         let mut new_downloads = Vec::new();
 
         egui::ScrollArea::vertical().auto_shrink([false; 2]).show(ui, | ui | {
             for update in self.v.update_results.iter() {
-                new_downloads.append(&mut self.draw_result_entry(ui, update));
+                new_downloads.append(&mut self.draw_result_entry(ctx, ui, update));
             }
         });
 
@@ -346,54 +346,70 @@ impl UpdatesApp {
         }
     }
 
-    fn draw_result_entry(&self, ui: &mut egui::Ui, update: &UpdateInfo) -> Vec<ActiveDownload> {
+    fn draw_result_entry(&self, ctx: &egui::Context, ui: &mut egui::Ui, update: &UpdateInfo) -> Vec<ActiveDownload> {
         let mut new_downloads = Vec::new();
 
-        let title_id = &update.title_id;
-        let collapsing_title = {
-            if let Some(last_pkg) = update.tag.packages.last() {
-                if let Some(param) = last_pkg.paramsfo.as_ref() {
-                    format!("{} - {}", update.title_id.clone(), param.titles[0])
-                }
-                else {
-                    update.title_id.clone()
-                }
-            }
-            else {
-                update.title_id.clone()
-            }
-        };
-
-        ui.collapsing(collapsing_title, | ui | {
-            let total_updates_size = {
-                let mut size = 0;
-
-                for pkg in update.tag.packages.iter() {
-                    size += pkg.size;
-                }
-
-                size
-            };
-
-            if ui.button(format!("Download all ({})", ByteSize::b(total_updates_size))).clicked() {
-                info!("Downloading all updates for serial {} ({})", title_id, update.tag.packages.len());
-
-                for pkg in update.tag.packages.iter() {
-                    if !self.v.download_queue.iter().any(| d | &d.id == title_id && d.version == pkg.version) {
-                        info!("Downloading update {} for serial {} (group)", pkg.version, title_id);
-                        new_downloads.push(self.start_download(title_id.to_string(), pkg.clone()));
-                    }
-                }
-            }
-
-            ui.separator();
+        let total_updates_size = {
+            let mut size = 0;
 
             for pkg in update.tag.packages.iter() {
-                if let Some(download) = self.draw_entry_pkg(ui, pkg, title_id) {
-                    new_downloads.push(download);
-                }
+                size += pkg.size;
             }
-        });
+
+            size
+        };
+
+        let title_id = &update.title_id;
+        let update_count = update.tag.packages.len();
+
+        let id = egui::Id::new(format!("pkg_header_{}", title_id));
+
+        egui::collapsing_header::CollapsingState::load_with_default_open(ctx, id, false)
+            .show_header(ui, | ui | {
+                let collapsing_title = {
+                    if let Some(last_pkg) = update.tag.packages.last() {
+                        if let Some(param) = last_pkg.paramsfo.as_ref() {
+                            format!("{} - {} ({} update(s) - {} total)", title_id, param.titles[0], update_count, ByteSize::b(total_updates_size))
+                        }
+                        else {
+                            title_id.clone()
+                        }
+                    }
+                    else {
+                        title_id.clone()
+                    }
+                };
+
+                ui.strong(collapsing_title);
+
+                ui.separator();
+    
+                if ui.button("Download all").clicked() {
+                    info!("Downloading all updates for serial {} ({})", title_id, update_count);
+    
+                    for pkg in update.tag.packages.iter() {
+                        if !self.v.download_queue.iter().any(| d | &d.id == title_id && d.version == pkg.version) {
+                            info!("Downloading update {} for serial {} (group)", pkg.version, title_id);
+                            new_downloads.push(self.start_download(title_id.to_string(), pkg.clone()));
+                        }
+                    }
+                }
+            })
+            .body(| ui | {
+                ui.add_space(5.0);
+
+                for pkg in update.tag.packages.iter() {
+                    if let Some(download) = self.draw_entry_pkg(ui, pkg, title_id) {
+                        new_downloads.push(download);
+                    }
+
+                    ui.add_space(5.0);
+                }
+            })
+        ;
+
+        ui.separator();
+        ui.add_space(5.0);
 
         new_downloads
     }
@@ -401,39 +417,39 @@ impl UpdatesApp {
     fn draw_entry_pkg(&self, ui: &mut egui::Ui, pkg: &PackageInfo, title_id: &str) -> Option<ActiveDownload> {
         let mut download = None;
 
-        let bytes = pkg.size;
-                    
-        ui.strong(format!("Package Version: {}", pkg.version));
-        ui.label(format!("Size: {}", ByteSize::b(bytes)));
-        ui.label(format!("SHA-1 hashsum: {}", pkg.sha1sum));
-
-        ui.horizontal(| ui | {
-            let existing_download = self.v.download_queue
-                .iter()
-                .find(| d | d.id == title_id && d.version == pkg.version)
-            ;
-
-            if ui.add_enabled(existing_download.is_none(), egui::Button::new("Download file")).clicked() {
-                info!("Downloading update {} for serial {} (individual)", pkg.version, title_id);
-                download = Some(self.start_download(title_id.to_string(), pkg.clone()));
-            }
-
-            if let Some(download) = existing_download {
-                let progress = egui::ProgressBar::new(download.progress as f32 / download.size as f32)
-                    .show_percentage()
+        ui.group(| ui | {
+            ui.strong(format!("Package Version: {}", pkg.version));
+            ui.label(format!("Size: {}", ByteSize::b(pkg.size)));
+            ui.label(format!("SHA-1 hashsum: {}", pkg.sha1sum));
+    
+            ui.separator();
+    
+            ui.horizontal(| ui | {
+                let existing_download = self.v.download_queue
+                    .iter()
+                    .find(| d | d.id == title_id && d.version == pkg.version)
                 ;
-
-                ui.add(progress);
-            }
-            else if self.v.completed_downloads.iter().any(| (id, version) | id == title_id && version == &pkg.version) {
-                ui.label(egui::RichText::new("Completed").color(egui::color::Rgba::from_rgb(0.0, 1.0, 0.0)));
-            }
-            else if self.v.failed_downloads.iter().any(| (id, version) | id == title_id && version == &pkg.version) {
-                ui.label(egui::RichText::new("Failed").color(egui::color::Rgba::from_rgb(1.0, 0.0, 0.0)));
-            }
+                
+                if ui.add_enabled(existing_download.is_none(), egui::Button::new("Download file")).clicked() {
+                    info!("Downloading update {} for serial {} (individual)", pkg.version, title_id);
+                    download = Some(self.start_download(title_id.to_string(), pkg.clone()));
+                }
+                
+                if let Some(download) = existing_download {
+                    let progress = download.progress as f32 / download.size as f32;
+                    ui.add(egui::ProgressBar::new(progress).show_percentage());
+                }
+                else if self.v.completed_downloads.iter().any(| (id, version) | id == title_id && version == &pkg.version) {
+                    ui.label(egui::RichText::new("Completed").color(egui::color::Rgba::from_rgb(0.0, 1.0, 0.0)));
+                }
+                else if self.v.failed_downloads.iter().any(| (id, version) | id == title_id && version == &pkg.version) {
+                    ui.label(egui::RichText::new("Failed").color(egui::color::Rgba::from_rgb(1.0, 0.0, 0.0)));
+                }
+            
+                let remaining_space = ui.available_size_before_wrap();
+                ui.add_space(remaining_space.x);
+            });
         });
-
-        ui.separator();
 
         download
     }
