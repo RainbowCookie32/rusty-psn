@@ -193,10 +193,10 @@ impl eframe::App for UpdatesApp {
                             DownloadError::HashMismatch => {
                                 toasts.push((format!("Failed to download {} v{}: Hash mismatch.", download.id, download.version), ToastLevel::Error));
                             }
-                            DownloadError::Tokio(e) => {
+                            DownloadError::Tokio(_) => {
                                 toasts.push((format!("Failed to download {} v{}. Check the log for details.", download.id, download.version), ToastLevel::Error));
                             }
-                            DownloadError::Reqwest(e) => {
+                            DownloadError::Reqwest(_) => {
                                 toasts.push((format!("Failed to download {} v{}. Check the log for details.", download.id, download.version), ToastLevel::Error));
                             }
                         }
@@ -216,6 +216,7 @@ impl eframe::App for UpdatesApp {
         }
 
         self.v.toasts.show(ctx);
+        ctx.request_repaint();
     }
 }
 
@@ -489,6 +490,8 @@ impl UpdatesApp {
                     self.v.modified_settings.pkg_download_path = PathBuf::from("/pkgs");
                 }
             });
+
+            ui.add_space(5.0);
 
             if ui.checkbox(&mut self.v.modified_settings.show_toasts, "Show in-app toasts").changed() {
                 self.v.settings_dirty = true;
