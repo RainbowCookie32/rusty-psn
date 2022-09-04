@@ -13,6 +13,7 @@ pub enum DownloadStatus {
     DownloadFailure
 }
 
+#[derive(Debug)]
 pub enum DownloadError {
     HashMismatch,
     Tokio(tokio::io::Error),
