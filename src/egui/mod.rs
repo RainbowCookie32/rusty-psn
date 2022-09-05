@@ -1,7 +1,11 @@
 use std::path::PathBuf;
+use std::time::Duration;
 
 use eframe::egui;
+use egui_notify::{Toast, Toasts, ToastLevel};
+
 use bytesize::ByteSize;
+use notify_rust::Notification;
 use poll_promise::Promise;
 use serde::{Deserialize, Serialize};
 use copypasta::{ClipboardContext, ClipboardProvider};
@@ -26,13 +30,17 @@ pub struct ActiveDownload {
 
 #[derive(Clone, Deserialize, Serialize)]
 struct AppSettings {
-    pkg_download_path: PathBuf
+    pkg_download_path: PathBuf,
+    show_toasts: bool,
+    show_notifications: bool,
 }
 
 impl Default for AppSettings {
     fn default() -> AppSettings {
         AppSettings {
-            pkg_download_path: PathBuf::from("pkgs/")
+            pkg_download_path: PathBuf::from("pkgs/"),
+            show_toasts: true,
+            show_notifications: false
         }
     }
 }
@@ -40,14 +48,13 @@ impl Default for AppSettings {
 // Values that shouldn't be persisted from run to run.
 struct VolatileData {
     rt: Runtime,
+    toasts: Toasts,
     
     clipboard: Option<Box<dyn ClipboardProvider>>,
 
     serial_query: String,
     update_results: Vec<UpdateInfo>,
 
-    error_msg: String,
-    show_error_window: bool,
     show_settings_window: bool,
 
     settings_dirty: bool,
@@ -74,14 +81,13 @@ impl Default for VolatileData {
 
         VolatileData {
             rt: Runtime::new().unwrap(),
+            toasts: Toasts::default().reverse(true),
 
             clipboard,
 
             serial_query: String::new(),
             update_results: Vec::new(),
 
-            error_msg: String::new(),
-            show_error_window: false,
             show_settings_window: false,
 
             settings_dirty: false,
@@ -117,36 +123,11 @@ impl eframe::App for UpdatesApp {
             self.draw_results_list(ctx, ui);
         });
 
-        if !self.v.error_msg.is_empty() && self.v.show_error_window {
-            let label = self.v.error_msg.clone();
-            // There was an attempt to properly center it :)
-            let position = ctx.available_rect().center();
-            let mut acknowledged = false;
-
-            let error_window = egui::Window::new("An error ocurred")
-                .collapsible(false)
-                .open(&mut self.v.show_error_window)
-                .resizable(false)
-                .default_pos(position)
-            ;
-
-            error_window.show(ctx, | ui | {
-                ui.label(label);
-
-                if ui.button("Ok").clicked() {
-                    acknowledged = true;
-                }
-            });
-
-            if acknowledged {
-                self.v.show_error_window = false;
-                self.v.error_msg = String::new();
-            }
-        }
-
         if self.v.show_settings_window {
             self.draw_settings_window(ctx);
         }
+
+        let mut toasts = Vec::new();
 
         // Go through search promises and handle their results if ready.
         if let Some(promise) = self.v.search_promise.as_ref() {
@@ -156,24 +137,22 @@ impl eframe::App for UpdatesApp {
                     self.v.update_results.push(update_info.clone());
                 }
                 else if let Err(e) = result {
-                    self.v.show_error_window = true;
-
                     match e {
                         UpdateError::Serde => {
-                            self.v.error_msg = "Error parsing response from Sony, try again later.".to_string();
+                            toasts.push((String::from("Error parsing response from Sony, try again later."), ToastLevel::Error));
                         }
                         UpdateError::InvalidSerial => {
-                            self.v.error_msg = "The provided serial didn't give any results, double-check your input.".to_string();
+                            toasts.push((String::from("The provided serial didn't give any results, double-check your input."), ToastLevel::Error));
                         }
                         UpdateError::NoUpdatesAvailable => {
-                            self.v.error_msg = "The provided serial doesn't have any available updates.".to_string();
+                            toasts.push((String::from("The provided serial doesn't have any available updates."), ToastLevel::Error));
                         }
-                        UpdateError::Reqwest(e) => {
-                            self.v.error_msg = format!("There was an error on the request: {}", e);
+                        UpdateError::Reqwest(_) => {
+                            toasts.push((String::from("There was an error completing the request."), ToastLevel::Error));
                         }
                     }
 
-                    error!("Error received from updates query: {}", self.v.error_msg);
+                    error!("Error received from updates query: {:?}", e);
                 }
                 
                 self.v.search_promise = None;
@@ -200,37 +179,43 @@ impl eframe::App for UpdatesApp {
 
                 match r {
                     Ok(_) => {
+                        info!("Download completed! ({} {})", &download.id, &download.version);
+
                         // Add this download to the happy list of successful downloads.
+                        toasts.push((format!("{} v{} downloaded successfully!", &download.id, &download.version), ToastLevel::Success));
                         self.v.completed_downloads.push((download.id.clone(), download.version.clone()));
-                        info!("Download completed! ({} {})", download.id, download.version);
                     }
                     Err(e) => {
                         // Add this download to the sad list of failed downloads and show the error window.
-                        self.v.show_error_window = true;
                         self.v.failed_downloads.push((download.id.clone(), download.version.clone()));
 
                         match e {
                             DownloadError::HashMismatch => {
-                                self.v.error_msg = format!("There was an error downloading the {} update file for {}: The hash for the downloaded file doesn't match.", download.version, download.id);
+                                toasts.push((format!("Failed to download {} v{}: Hash mismatch.", download.id, download.version), ToastLevel::Error));
                             }
-                            DownloadError::Tokio(e) => {
-                                self.v.error_msg = format!("There was an error downloading the {} update file for {}: {e}", download.version, download.id);
+                            DownloadError::Tokio(_) => {
+                                toasts.push((format!("Failed to download {} v{}. Check the log for details.", download.id, download.version), ToastLevel::Error));
                             }
-                            DownloadError::Reqwest(e) => {
-                                self.v.error_msg = format!("There was an error downloading the {} update file for {}: {e}", download.version, download.id);
+                            DownloadError::Reqwest(_) => {
+                                toasts.push((format!("Failed to download {} v{}. Check the log for details.", download.id, download.version), ToastLevel::Error));
                             }
                         }
 
-                        error!("Error received from pkg download ({} {}): {}", download.id, download.version, self.v.error_msg);
+                        error!("Error received from pkg download ({} {}): {:?}", download.id, download.version, e);
                     }
                 }
             }
+        }
+
+        for (msg, level) in toasts {
+            self.show_notifications(msg, level);
         }
 
         for (removed_entries, entry) in entries_to_remove.into_iter().enumerate() {
             self.v.download_queue.remove(entry - removed_entries);
         }
 
+        self.v.toasts.show(ctx);
         ctx.request_repaint();
     }
 }
@@ -270,6 +255,34 @@ impl UpdatesApp {
 
             promise: download_promise,
             progress_rx: rx
+        }
+    }
+
+    fn show_notifications<S: Into<String>>(&mut self, msg: S, level: ToastLevel) {
+        let msg = msg.into();
+
+        if self.settings.show_toasts {
+            let mut toast = Toast::basic(&msg);
+            toast.set_level(level);
+            toast.set_duration(Some(Duration::from_secs(10)));
+
+            self.v.toasts.add(toast);
+        }
+        else {
+            info!("Toasts are disabled in settings, not showing.")
+        }
+
+        if self.settings.show_notifications {
+            let mut notification = Notification::new();
+            notification.summary("rusty-psn");
+            notification.body(&msg);
+
+            if let Err(e) = notification.show() {
+                error!("Failed to show system notification: {e}");
+            }
+        }
+        else {
+            info!("System notifications are disabled in settings, not showing.")
         }
     }
 
@@ -477,6 +490,16 @@ impl UpdatesApp {
                     self.v.modified_settings.pkg_download_path = PathBuf::from("/pkgs");
                 }
             });
+
+            ui.add_space(5.0);
+
+            if ui.checkbox(&mut self.v.modified_settings.show_toasts, "Show in-app toasts").changed() {
+                self.v.settings_dirty = true;
+            }
+
+            if ui.checkbox(&mut self.v.modified_settings.show_notifications, "Show system notifications").changed() {
+                self.v.settings_dirty = true;
+            }
 
             ui.with_layout(egui::Layout::bottom_up(egui::Align::TOP), | ui | {
                 ui.horizontal(| ui | {
