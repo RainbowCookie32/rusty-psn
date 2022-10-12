@@ -22,7 +22,7 @@ reqwest = { version = "0.11.12", default-features = false, features = ["rustls-t
 rfd = { version = "0.10.0", optional = true }
 eframe = { version = "0.19.0", features = ["persistence"], optional = true }
 egui-notify = { version = "0.4.0", optional = true }
-notify-rust = { version = "4.5.8", optional = true }
+notify-rust = { version = "4.5.10", optional = true }
 
 poll-promise = { version = "0.1.0", features = ["tokio"] }
 serde = { version = "1.0.144", default-features = false, features = ["derive"] }
