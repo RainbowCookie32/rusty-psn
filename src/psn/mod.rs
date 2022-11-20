@@ -22,9 +22,9 @@ pub enum DownloadError {
 
 #[derive(Debug)]
 pub enum UpdateError {
-    Serde,
     InvalidSerial,
     NoUpdatesAvailable,
+    Serde(serde_xml_rs::Error),
     Reqwest(reqwest::Error)
 }
 
@@ -58,7 +58,7 @@ impl UpdateInfo {
             Err(UpdateError::InvalidSerial)
         }
         else {
-            serde_xml_rs::from_str(&response_txt).map_err(|_| UpdateError::Serde)
+            serde_xml_rs::from_str(&response_txt).map_err(UpdateError::Serde)
         }
     }
 }

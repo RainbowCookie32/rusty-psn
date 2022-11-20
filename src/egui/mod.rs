@@ -138,17 +138,17 @@ impl eframe::App for UpdatesApp {
                 }
                 else if let Err(e) = result {
                     match e {
-                        UpdateError::Serde => {
-                            toasts.push((String::from("Error parsing response from Sony, try again later."), ToastLevel::Error));
-                        }
                         UpdateError::InvalidSerial => {
                             toasts.push((String::from("The provided serial didn't give any results, double-check your input."), ToastLevel::Error));
                         }
                         UpdateError::NoUpdatesAvailable => {
                             toasts.push((String::from("The provided serial doesn't have any available updates."), ToastLevel::Error));
                         }
-                        UpdateError::Reqwest(_) => {
-                            toasts.push((String::from("There was an error completing the request."), ToastLevel::Error));
+                        UpdateError::Serde(e) => {
+                            toasts.push((format!("Error parsing response from Sony, try again later ({e})."), ToastLevel::Error));
+                        }
+                        UpdateError::Reqwest(e) => {
+                            toasts.push((format!("There was an error completing the request ({e})."), ToastLevel::Error));
                         }
                     }
 
