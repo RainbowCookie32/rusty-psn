@@ -81,7 +81,9 @@ impl Default for VolatileData {
 
         VolatileData {
             rt: Runtime::new().unwrap(),
-            toasts: Toasts::default().reverse(true),
+            toasts: Toasts::default()
+                .reverse(true)
+                .with_anchor(egui_notify::Anchor::BottomRight),
 
             clipboard,
 
