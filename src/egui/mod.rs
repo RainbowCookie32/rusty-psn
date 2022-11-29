@@ -144,11 +144,11 @@ impl eframe::App for UpdatesApp {
                         UpdateError::NoUpdatesAvailable => {
                             toasts.push((String::from("The provided serial doesn't have any available updates."), ToastLevel::Error));
                         }
-                        UpdateError::Reqwest(_) => {
-                            toasts.push((String::from("There was an error completing the request."), ToastLevel::Error));
+                        UpdateError::Reqwest(e) => {
+                            toasts.push((format!("There was an error completing the request ({e})."), ToastLevel::Error));
                         }
-                        UpdateError::XmlParsing(_) => {
-                            toasts.push((String::from("Error parsing response from Sony, try again later."), ToastLevel::Error));
+                        UpdateError::XmlParsing(e) => {
+                            toasts.push((format!("Error parsing response from Sony, try again later ({e})."), ToastLevel::Error));
                         }
                     }
 
