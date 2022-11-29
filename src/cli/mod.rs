@@ -57,10 +57,6 @@ pub fn start_app() {
                 }
                 Err(e) => {
                     match e {
-                        UpdateError::Serde => {
-                            error!("Failed to deserialize response for {id}");
-                            println!("{id}: Error parsing response from PSN, try again later.");
-                        }
                         UpdateError::InvalidSerial => {
                             error!("Invalid serial for updates query {id}");
                             println!("{id}: The provided serial didn't give any results, double-check your input.");
@@ -73,6 +69,10 @@ pub fn start_app() {
                             error!("reqwest error on updates query: {e}");
                             println!("{id}: There was an error on the request: {e}.");
                         }
+                        UpdateError::XmlParsing(e) => {
+                            error!("Failed to deserialize response for {id}: {e}");
+                            println!("{id}: Error parsing response from PSN, try again later ({e}).");
+                        }
                     }
                 }
             }
@@ -83,17 +83,11 @@ pub fn start_app() {
 
     for update in update_info {
         let title = {
-            if let Some(last_pkg) = update.tag.packages.last() {
-                if let Some(param) = last_pkg.paramsfo.as_ref() {
-                    param.titles[0].clone()
-                }
-                else {
-                    warn!("Failed to get update's title: Last pkg's info didn't contain a title");
-                    String::from("Untitled")
-                }
+            if let Some(title) = update.titles.get(0) {
+                title.clone()
             }
             else {
-                warn!("Failed to get update's title: Couldn't get the last pkg's info");
+                warn!("Failed to get update's title: Last pkg's info didn't contain a title");
                 String::from("Untitled")
             }
         };
@@ -104,16 +98,16 @@ pub fn start_app() {
             let total_size = {
                 let mut total = 0;
 
-                for pkg in update.tag.packages.iter() {
+                for pkg in update.packages.iter() {
                     total += pkg.size;
                 }
 
                 ByteSize::b(total)
             };
     
-            println!("{} - {} - {} update(s) ({})", update.title_id, &title, update.tag.packages.len(), total_size);
+            println!("{} - {} - {} update(s) ({})", update.title_id, &title, update.packages.len(), total_size);
 
-            for (i, pkg) in update.tag.packages.iter().enumerate() {
+            for (i, pkg) in update.packages.iter().enumerate() {
                 println!("  {i}. {} ({})", pkg.version, ByteSize::b(pkg.size));
             }
         }
@@ -133,7 +127,7 @@ pub fn start_app() {
             if !response.is_empty() {
                 updates_to_fetch = response.split(' ')
                     .filter_map(| s | s.parse::<usize>().ok())
-                    .filter(| idx | *idx < update.tag.packages.len())
+                    .filter(| idx | *idx < update.packages.len())
                     .collect()
                 ;
 
@@ -145,17 +139,17 @@ pub fn start_app() {
                 let mut updates = String::new();
 
                 if updates_to_fetch.is_empty() {
-                    for (i, pkg) in update.tag.packages.iter().enumerate() {
+                    for (i, pkg) in update.packages.iter().enumerate() {
                         updates.push_str(&pkg.version);
     
-                        if i < update.tag.packages.len() - 1 {
+                        if i < update.packages.len() - 1 {
                             updates.push_str(", ");
                         }
                     }
                 }
                 else {
                     for (i, update_idx) in updates_to_fetch.iter().enumerate() {
-                        updates.push_str(&update.tag.packages[*update_idx].version.to_string());
+                        updates.push_str(&update.packages[*update_idx].version.to_string());
     
                         if i < updates_to_fetch.len() - 1 {
                             updates.push_str(", ");
@@ -172,7 +166,7 @@ pub fn start_app() {
             println!("{} {} - Downloading update(s): {}", update.title_id, title, updates);
         }
         
-        for (idx, pkg) in update.tag.packages.iter().enumerate() {
+        for (idx, pkg) in update.packages.iter().enumerate() {
             if !updates_to_fetch.is_empty() && !updates_to_fetch.contains(&idx) {
                 continue;
             }
