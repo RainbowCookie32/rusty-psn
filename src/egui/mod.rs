@@ -144,11 +144,11 @@ impl eframe::App for UpdatesApp {
                         UpdateError::NoUpdatesAvailable => {
                             toasts.push((String::from("The provided serial doesn't have any available updates."), ToastLevel::Error));
                         }
-                        UpdateError::Serde(e) => {
-                            toasts.push((format!("Error parsing response from Sony, try again later ({e})."), ToastLevel::Error));
+                        UpdateError::Reqwest(_) => {
+                            toasts.push((String::from("There was an error completing the request."), ToastLevel::Error));
                         }
-                        UpdateError::Reqwest(e) => {
-                            toasts.push((format!("There was an error completing the request ({e})."), ToastLevel::Error));
+                        UpdateError::XmlParsing(_) => {
+                            toasts.push((String::from("Error parsing response from Sony, try again later."), ToastLevel::Error));
                         }
                     }
 
@@ -365,7 +365,7 @@ impl UpdatesApp {
         let total_updates_size = {
             let mut size = 0;
 
-            for pkg in update.tag.packages.iter() {
+            for pkg in update.packages.iter() {
                 size += pkg.size;
             }
 
@@ -373,20 +373,15 @@ impl UpdatesApp {
         };
 
         let title_id = &update.title_id;
-        let update_count = update.tag.packages.len();
+        let update_count = update.packages.len();
 
         let id = egui::Id::new(format!("pkg_header_{}", title_id));
 
         egui::collapsing_header::CollapsingState::load_with_default_open(ctx, id, false)
             .show_header(ui, | ui | {
                 let collapsing_title = {
-                    if let Some(last_pkg) = update.tag.packages.last() {
-                        if let Some(param) = last_pkg.paramsfo.as_ref() {
-                            format!("{} - {} ({} update(s) - {} total)", title_id, param.titles[0], update_count, ByteSize::b(total_updates_size))
-                        }
-                        else {
-                            title_id.clone()
-                        }
+                    if let Some(title) = update.titles.get(0) {
+                        format!("{title_id} - {title} ({update_count} update(s) - {} total)", ByteSize::b(total_updates_size))
                     }
                     else {
                         title_id.clone()
@@ -400,7 +395,7 @@ impl UpdatesApp {
                 if ui.button("Download all").clicked() {
                     info!("Downloading all updates for serial {} ({})", title_id, update_count);
     
-                    for pkg in update.tag.packages.iter() {
+                    for pkg in update.packages.iter() {
                         if !self.v.download_queue.iter().any(| d | &d.id == title_id && d.version == pkg.version) {
                             info!("Downloading update {} for serial {} (group)", pkg.version, title_id);
                             new_downloads.push(self.start_download(title_id.to_string(), pkg.clone()));
@@ -411,7 +406,7 @@ impl UpdatesApp {
             .body(| ui | {
                 ui.add_space(5.0);
 
-                for pkg in update.tag.packages.iter() {
+                for pkg in update.packages.iter() {
                     if let Some(download) = self.draw_entry_pkg(ui, pkg, title_id) {
                         new_downloads.push(download);
                     }
