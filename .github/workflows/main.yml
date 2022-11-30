@@ -5,76 +5,56 @@ on:
   - pull_request
 
 jobs:
-  linux-cli-build:
-    runs-on: [ubuntu-latest]
-    steps:
-    - uses: actions/checkout@v2
-    - name: Rust Cache
-      uses: Swatinem/rust-cache@v1.3.0
-    - name: Build rusty-psn (linux-cli)
-      run: cargo build --release --no-default-features --features "cli"
-    - name: Move binary
-      run: |
-        mkdir result
-        cp target/release/rusty-psn result
-    - name: Upload artifact
-      uses: actions/upload-artifact@v1.0.0
-      with:
-        name: rusty-psn-cli-linux
-        path: result
+  build_matrix:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        feature: ["cli", "egui"]
 
-  linux-egui-build:
-    runs-on: [ubuntu-latest]
+    runs-on: ${{ matrix.os }}
     steps:
-    - uses: actions/checkout@v2
-    - name: Rust Cache
-      uses: Swatinem/rust-cache@v1.3.0
-    - name: Install egui deps
-      run: sudo apt update && sudo apt-get install libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev libspeechd-dev libxkbcommon-dev libssl-dev libgtk-3-dev
-    - name: Build rusty-psn (linux-egui)
-      run: cargo build --release --no-default-features --features "egui"
-    - name: Move binary
-      run: |
-        mkdir result
-        cp target/release/rusty-psn result
-    - name: Upload artifact
-      uses: actions/upload-artifact@v1.0.0
-      with:
-        name: rusty-psn-egui-linux
-        path: result
-        
-  windows-cli-build:
-    runs-on: [windows-latest]
-    steps:
-    - uses: actions/checkout@v2
-    - name: Rust Cache
-      uses: Swatinem/rust-cache@v1.3.0
-    - name: Build rusty-psn (windows-egui)
-      run: cargo build --release --no-default-features --features "cli"
-    - name: Move binary
-      run: |
-        mkdir result
-        copy target/release/rusty-psn.exe result 
-    - name: Upload artifact
-      uses: actions/upload-artifact@v1.0.0
-      with:
-        name: rusty-psn-cli-windows
-        path: result 
+      - name: Set OS variables (Linux)
+        if: ${{ matrix.os == 'ubuntu-latest' }}
+        env:
+          OS_NAME: "linux"
+          EXECUTABLE: "rusty-psn"
 
-  windows-egui-build:
-    runs-on: [windows-latest]
-    steps:
-    - uses: actions/checkout@v2
-    - name: Rust Cache
-      uses: Swatinem/rust-cache@v1.3.0
-    - name: Build rusty-psn (windows-egui)
-      run: cargo build --release --no-default-features --features "egui"
-    - name: Move binary
-      run: |
-        mkdir result
-        copy target/release/rusty-psn.exe result 
-    - name: Upload artifact
-      uses: actions/upload-artifact@v1.0.0
-      with:
-        name: rusty-psn-egui-windows
-        path: result 
+      - name: Set OS variables (Windows)
+        if: ${{ matrix.os == 'windows-latest' }}
+        env:
+          OS_NAME: "windows"
+          EXECUTABLE: "rusty-psn.exe"
+
+      - uses: actions/checkout@v3
+
+      - name: Rust Cache
+        uses: Swatinem/rust-cache@v2.2.0
+        with:
+          cache-on-failure: "true"
+
+      - name: Install dependencies
+        if: ${{ matrix.os == 'ubuntu-latest' && matrix.feature == 'egui' }}
+        run: |
+          sudo apt update
+          sudo apt-get install libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev libspeechd-dev libxkbcommon-dev libssl-dev libgtk-3-dev
+
+      - name: Build rusty-psn
+        run: cargo build --release --no-default-features --features ${{ matrix.feature }}
+
+      - name: Move binary (Linux)
+        run: |
+          mkdir result
+          cp target/release/${{ env.EXECUTABLE }} result
+
+      - name: Move binary (Windows)
+        if: ${{ matrix.os == 'windows-latest' }}
+        run: |
+          mkdir result
+          cp target/release/rusty-psn.exe result
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v1.0.0
+        with:
+          name: rusty-psn-${{ matrix.feature }}-${{ env.OS_NAME }}
+          path: result
+          
