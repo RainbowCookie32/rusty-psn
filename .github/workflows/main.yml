@@ -13,18 +13,6 @@ jobs:
 
     runs-on: ${{ matrix.os }}
     steps:
-      - name: Set OS variables (Linux)
-        if: ${{ matrix.os == 'ubuntu-latest' }}
-        env:
-          OS_NAME: "linux"
-          EXECUTABLE: "rusty-psn"
-
-      - name: Set OS variables (Windows)
-        if: ${{ matrix.os == 'windows-latest' }}
-        env:
-          OS_NAME: "windows"
-          EXECUTABLE: "rusty-psn.exe"
-
       - uses: actions/checkout@v3
 
       - name: Rust Cache
@@ -52,9 +40,17 @@ jobs:
           mkdir result
           cp target/release/rusty-psn.exe result
 
-      - name: Upload artifact
-        uses: actions/upload-artifact@v1.0.0
+      - name: Upload artifact (Linux)
+        if: ${{ matrix.os == 'ubuntu-latest' }}
+        uses: actions/upload-artifact@v3.1.1
         with:
-          name: rusty-psn-${{ matrix.feature }}-${{ env.OS_NAME }}
+          name: rusty-psn-${{ matrix.feature }}-linux
+          path: result
+
+      - name: Upload artifact (Windows)
+        if: ${{ matrix.os == 'windows-latest' }}
+        uses: actions/upload-artifact@v3.1.1
+        with:
+          name: rusty-psn-${{ matrix.feature }}-windows
           path: result
           
