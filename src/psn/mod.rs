@@ -1,6 +1,7 @@
+mod parser;
+
 use std::path::PathBuf;
 
-use serde::Deserialize;
 use tokio::io::AsyncWriteExt;
 use tokio::sync::mpsc::Sender;
 
@@ -24,18 +25,30 @@ pub enum DownloadError {
 pub enum UpdateError {
     InvalidSerial,
     NoUpdatesAvailable,
-    Serde(serde_xml_rs::Error),
-    Reqwest(reqwest::Error)
+    Reqwest(reqwest::Error),
+    XmlParsing(quick_xml::Error),
 }
 
-#[derive(Clone, Deserialize)]
+#[derive(Clone)]
 pub struct UpdateInfo {
-    #[serde(rename = "titleid")]
     pub title_id: String,
-    pub tag: UpdateTag
+    pub tag_name: String,
+
+    pub titles: Vec<String>,
+    pub packages: Vec<PackageInfo>,
 }
 
 impl UpdateInfo {
+    fn empty() -> UpdateInfo {
+        UpdateInfo {
+            title_id: String::new(),
+            tag_name: String::new(),
+
+            titles: Vec::new(),
+            packages: Vec::new(),
+        }
+    }
+
     pub async fn get_info(title_id: String) -> Result<UpdateInfo, UpdateError> {
         let title_id = title_id.to_uppercase();
         let url = format!("https://a0.ww.np.dl.playstation.net/tpl/np/{0}/{0}-ver.xml", title_id);
@@ -58,29 +71,30 @@ impl UpdateInfo {
             Err(UpdateError::InvalidSerial)
         }
         else {
-            serde_xml_rs::from_str(&response_txt).map_err(UpdateError::Serde)
+            parser::parse_response(response_txt)
+                .map_err(UpdateError::XmlParsing)
         }
     }
 }
 
-#[derive(Clone, Deserialize)]
-pub struct UpdateTag {
-    pub name: String,
-    #[serde(rename = "package")]
-    pub packages: Vec<PackageInfo>
-}
-
-#[derive(Clone, Deserialize)]
+#[derive(Clone)]
 pub struct PackageInfo {
     pub url: String,
     pub size: u64,
     pub version: String,
-    pub sha1sum: String,
-
-    pub paramsfo: Option<ParamSfo>
+    pub sha1sum: String
 }
 
 impl PackageInfo {
+    fn empty() -> PackageInfo {
+        PackageInfo {
+            url: String::new(),
+            size: 0,
+            version: String::new(),
+            sha1sum: String::new()
+        }
+    }
+
     pub async fn start_download(&self, tx: Sender<DownloadStatus>, serial: String, mut download_path: PathBuf) -> Result<(), DownloadError> {
         info!("Starting download for for {serial} {}", self.version);
         info!("Sending pkg file request to url: {}", &self.url);
@@ -152,8 +166,38 @@ impl PackageInfo {
     }
 }
 
-#[derive(Clone, Deserialize)]
-pub struct ParamSfo {
-    #[serde(rename = "$value")]
-    pub titles: Vec<String>
+mod tests {
+    use super::UpdateInfo;
+
+    #[tokio::test]
+    async fn parse_ac3() {
+        match UpdateInfo::get_info("NPUB30826".to_string()).await {
+            Ok(info) => assert!(info.packages.len() == 1),
+            Err(e) => panic!("Failed to get info for NPUB30826: {:?}", e)
+        }
+    }
+
+    #[tokio::test]
+    async fn parse_lpb() {
+        match UpdateInfo::get_info("BCUS98148".to_string()).await {
+            Ok(info) => assert!(info.packages.len() == 13),
+            Err(e) => panic!("Failed to get info for BCUS98148: {:?}", e)
+        }
+    }
+
+    #[tokio::test]
+    async fn parse_infamous2() {
+        match UpdateInfo::get_info("NPUA80638".to_string()).await {
+            Ok(info) => assert!(info.packages.len() == 3),
+            Err(e) => panic!("Failed to get info for NPUA80638: {:?}", e)
+        }
+    }
+    
+    #[tokio::test]
+    async fn parse_tokyo_jungle() {
+        match UpdateInfo::get_info("NPUA80523".to_string()).await {
+            Ok(info) => assert!(info.packages.len() == 1),
+            Err(e) => panic!("Failed to get info for NPUA80523: {:?}", e)
+        }
+    }
 }
