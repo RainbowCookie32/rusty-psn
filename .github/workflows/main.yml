@@ -32,7 +32,7 @@ jobs:
       - name: Move binary (Linux)
         run: |
           mkdir result
-          cp target/release/${{ env.EXECUTABLE }} result
+          cp target/release/rusty-psn result
 
       - name: Move binary (Windows)
         if: ${{ matrix.os == 'windows-latest' }}
