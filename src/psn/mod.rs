@@ -50,7 +50,7 @@ impl UpdateInfo {
     }
 
     pub async fn get_info(title_id: String) -> Result<UpdateInfo, UpdateError> {
-        let title_id = title_id.to_uppercase();
+        let title_id = title_id.trim().to_uppercase();
         let url = format!("https://a0.ww.np.dl.playstation.net/tpl/np/{0}/{0}-ver.xml", title_id);
         let client = reqwest::ClientBuilder::default()
             // Sony has funky certificates, so this needs to be enabled.
