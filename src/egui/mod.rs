@@ -5,8 +5,8 @@ use eframe::egui;
 use egui_notify::{Toast, Toasts, ToastLevel};
 
 use bytesize::ByteSize;
-use notify_rust::Notification;
 use poll_promise::Promise;
+use notify_rust::Notification;
 use serde::{Deserialize, Serialize};
 use copypasta::{ClipboardContext, ClipboardProvider};
 
@@ -21,7 +21,6 @@ pub struct ActiveDownload {
 
     size: u64,
     progress: u64,
-    // TODO: Can be used to show status of the download on UI.
     last_received_status: DownloadStatus,
 
     promise: Promise<Result<(), DownloadError>>,
@@ -119,9 +118,7 @@ impl eframe::App for UpdatesApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         egui::CentralPanel::default().show(ctx, | ui | {
             self.draw_search_bar(ui);
-
             ui.separator();
-
             self.draw_results_list(ctx, ui);
         });
 
@@ -131,39 +128,65 @@ impl eframe::App for UpdatesApp {
 
         let mut toasts = Vec::new();
 
-        // Go through search promises and handle their results if ready.
-        if let Some(promise) = self.v.search_promise.as_ref() {
-            if let Some(result) = promise.ready() {
-                if let Ok(update_info) = result {
-                    info!("Received search results for serial {}", update_info.title_id);
-                    self.v.update_results.push(update_info.clone());
-                }
-                else if let Err(e) = result {
-                    match e {
-                        UpdateError::InvalidSerial => {
-                            toasts.push((String::from("The provided serial didn't give any results, double-check your input."), ToastLevel::Error));
-                        }
-                        UpdateError::NoUpdatesAvailable => {
-                            toasts.push((String::from("The provided serial doesn't have any available updates."), ToastLevel::Error));
-                        }
-                        UpdateError::Reqwest(e) => {
-                            toasts.push((format!("There was an error completing the request ({e})."), ToastLevel::Error));
-                        }
-                        UpdateError::XmlParsing(e) => {
-                            toasts.push((format!("Error parsing response from Sony, try again later ({e})."), ToastLevel::Error));
-                        }
-                    }
+        // Check the status of the search promise.
+        self.handle_search_promise(&mut toasts);
+        // Check in on active downloads.
+        self.handle_download_promises(&mut toasts);
 
-                    error!("Error received from updates query: {:?}", e);
-                }
-                
-                self.v.search_promise = None;
-            }
+        for (msg, level) in toasts {
+            self.show_notifications(msg, level);
         }
 
+        ctx.request_repaint();
+        self.v.toasts.show(ctx);
+    }
+}
+
+impl UpdatesApp {
+    pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
+        if let Some(storage) = cc.storage {
+            eframe::get_value(storage, eframe::APP_KEY).unwrap_or_default()
+        }
+        else {
+            Default::default()
+        }
+    }
+
+    fn handle_search_promise(&mut self, toasts: &mut Vec<(String, ToastLevel)>) -> Option<()> {
+        let promise = self.v.search_promise.as_ref()?;
+        let promise_ready = promise.ready()?;
+        
+        if let Ok(update_info) = promise_ready {
+            info!("Received search results for serial {}", update_info.title_id);
+            self.v.update_results.push(update_info.clone());
+        }
+        else if let Err(e) = promise_ready {
+            match e {
+                UpdateError::InvalidSerial => {
+                    toasts.push((String::from("The provided serial didn't give any results, double-check your input."), ToastLevel::Error));
+                }
+                UpdateError::NoUpdatesAvailable => {
+                    toasts.push((String::from("The provided serial doesn't have any available updates."), ToastLevel::Error));
+                }
+                UpdateError::Reqwest(e) => {
+                    toasts.push((format!("There was an error completing the request ({e})."), ToastLevel::Error));
+                }
+                UpdateError::XmlParsing(e) => {
+                    toasts.push((format!("Error parsing response from Sony, try again later ({e})."), ToastLevel::Error));
+                }
+            }
+
+            error!("Error received from updates query: {:?}", e);
+        }
+        
+        self.v.search_promise = None;
+
+        Some(())
+    }
+
+    fn handle_download_promises(&mut self, toasts: &mut Vec<(String, ToastLevel)>) {
         let mut entries_to_remove = Vec::new();
 
-        // Check in on active downloads.
         for (i, download) in self.v.download_queue.iter_mut().enumerate() {
             if let Ok(status) = download.progress_rx.try_recv() {
                 if let DownloadStatus::Progress(progress) = status {
@@ -209,26 +232,8 @@ impl eframe::App for UpdatesApp {
             }
         }
 
-        for (msg, level) in toasts {
-            self.show_notifications(msg, level);
-        }
-
-        for (removed_entries, entry) in entries_to_remove.into_iter().enumerate() {
-            self.v.download_queue.remove(entry - removed_entries);
-        }
-
-        self.v.toasts.show(ctx);
-        ctx.request_repaint();
-    }
-}
-
-impl UpdatesApp {
-    pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
-        if let Some(storage) = cc.storage {
-            eframe::get_value(storage, eframe::APP_KEY).unwrap_or_default()
-        }
-        else {
-            Default::default()
+        for index in entries_to_remove.into_iter().rev() {
+            self.v.download_queue.remove(index);
         }
     }
 
@@ -271,7 +276,7 @@ impl UpdatesApp {
             self.v.toasts.add(toast);
         }
         else {
-            info!("Toasts are disabled in settings, not showing.")
+            info!("A toast was supposed to be showed, but they are disabled.")
         }
 
         if self.settings.show_notifications {
@@ -364,20 +369,15 @@ impl UpdatesApp {
     fn draw_result_entry(&self, ctx: &egui::Context, ui: &mut egui::Ui, update: &UpdateInfo) -> Vec<ActiveDownload> {
         let mut new_downloads = Vec::new();
 
-        let total_updates_size = {
-            let mut size = 0;
-
-            for pkg in update.packages.iter() {
-                size += pkg.size;
-            }
-
-            size
-        };
+        let total_updates_size = update.packages.iter()
+            .map(| pkg | pkg.size)
+            .sum::<u64>()
+        ;
 
         let title_id = &update.title_id;
         let update_count = update.packages.len();
 
-        let id = egui::Id::new(format!("pkg_header_{}", title_id));
+        let id = egui::Id::new(format!("pkg_header_{title_id}"));
 
         egui::collapsing_header::CollapsingState::load_with_default_open(ctx, id, false)
             .show_header(ui, | ui | {
@@ -398,8 +398,9 @@ impl UpdatesApp {
                     info!("Downloading all updates for serial {} ({})", title_id, update_count);
     
                     for pkg in update.packages.iter() {
+                        // Avoid duplicates by checking if there's already a download for this serial and version on the queue.
                         if !self.v.download_queue.iter().any(| d | &d.id == title_id && d.version == pkg.version) {
-                            info!("Downloading update {} for serial {} (group)", pkg.version, title_id);
+                            info!("Downloading update {} for serial {title_id} (group)", pkg.version);
                             new_downloads.push(self.start_download(title_id.to_string(), pkg.clone()));
                         }
                     }
@@ -446,8 +447,16 @@ impl UpdatesApp {
                 }
                 
                 if let Some(download) = existing_download {
-                    let progress = download.progress as f32 / download.size as f32;
-                    ui.add(egui::ProgressBar::new(progress).show_percentage());
+                    match download.last_received_status {
+                        DownloadStatus::Progress(_) => {
+                            let progress = download.progress as f32 / download.size as f32;
+                            ui.add(egui::ProgressBar::new(progress).show_percentage());
+                        }
+                        DownloadStatus::Verifying => {
+                            ui.label(egui::RichText::new("Verifying download...").color(egui::color::Rgba::from_rgb(1.0, 1.0, 0.6)));
+                        }
+                        _ => {}
+                    }
                 }
                 else if self.v.completed_downloads.iter().any(| (id, version) | id == title_id && version == &pkg.version) {
                     ui.label(egui::RichText::new("Completed").color(egui::color::Rgba::from_rgb(0.0, 1.0, 0.0)));
