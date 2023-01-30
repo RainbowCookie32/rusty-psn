@@ -1,4 +1,4 @@
-FROM amd64/ubuntu:impish
+FROM amd64/ubuntu:jammy
 WORKDIR /rusty-psn
 
 RUN apt-get update && \
