@@ -144,6 +144,19 @@ impl eframe::App for UpdatesApp {
 
 impl UpdatesApp {
     pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
+        let mut fonts = egui::FontDefinitions::default();
+
+        fonts.font_data.insert(
+            "notojp".to_owned(),
+            egui::FontData::from_static(include_bytes!("../../resources/NotoSansJP-Regular.otf"))
+        );
+
+        fonts.font_data.get_mut("notojp").expect("Couldn't get noto jp font").tweak.scale = 1.1;
+
+        fonts.families.entry(egui::FontFamily::Proportional).or_default().push("notojp".to_owned());
+
+        cc.egui_ctx.set_fonts(fonts);
+
         if let Some(storage) = cc.storage {
             eframe::get_value(storage, eframe::APP_KEY).unwrap_or_default()
         }
