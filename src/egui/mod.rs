@@ -117,10 +117,6 @@ impl eframe::App for UpdatesApp {
 
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         egui::CentralPanel::default().show(ctx, | ui | {
-            for (_style, id) in ui.style_mut().text_styles.iter_mut() {
-                id.size = 16.0;
-            }
-
             self.draw_search_bar(ui);
             ui.separator();
             self.draw_results_list(ctx, ui);
@@ -474,16 +470,16 @@ impl UpdatesApp {
                             ui.add(egui::ProgressBar::new(progress).show_percentage());
                         }
                         DownloadStatus::Verifying => {
-                            ui.label(egui::RichText::new("Verifying download...").color(egui::color::Rgba::from_rgb(1.0, 1.0, 0.6)));
+                            ui.label(egui::RichText::new("Verifying download...").color(egui::Rgba::from_rgb(1.0, 1.0, 0.6)));
                         }
                         _ => {}
                     }
                 }
                 else if self.v.completed_downloads.iter().any(| (id, version) | id == title_id && version == &pkg.version) {
-                    ui.label(egui::RichText::new("Completed").color(egui::color::Rgba::from_rgb(0.0, 1.0, 0.0)));
+                    ui.label(egui::RichText::new("Completed").color(egui::Rgba::from_rgb(0.0, 1.0, 0.0)));
                 }
                 else if self.v.failed_downloads.iter().any(| (id, version) | id == title_id && version == &pkg.version) {
-                    ui.label(egui::RichText::new("Failed").color(egui::color::Rgba::from_rgb(1.0, 0.0, 0.0)));
+                    ui.label(egui::RichText::new("Failed").color(egui::Rgba::from_rgb(1.0, 0.0, 0.0)));
                 }
             
                 let remaining_space = ui.available_size_before_wrap();
