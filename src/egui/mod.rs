@@ -117,6 +117,10 @@ impl eframe::App for UpdatesApp {
 
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         egui::CentralPanel::default().show(ctx, | ui | {
+            for (_style, id) in ui.style_mut().text_styles.iter_mut() {
+                id.size = 16.0;
+            }
+
             self.draw_search_bar(ui);
             ui.separator();
             self.draw_results_list(ctx, ui);
@@ -144,6 +148,23 @@ impl eframe::App for UpdatesApp {
 
 impl UpdatesApp {
     pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
+        let mut fonts = egui::FontDefinitions::default();
+
+        fonts.font_data.insert(
+            "noto".to_owned(),
+            egui::FontData::from_static(include_bytes!("../../resources/NotoSans-Regular.ttf"))
+        );
+
+        fonts.font_data.insert(
+            "notojp".to_owned(),
+            egui::FontData::from_static(include_bytes!("../../resources/NotoSansJP-Regular.otf"))
+        );
+
+        fonts.families.entry(egui::FontFamily::Proportional).or_default().insert(0, "noto".to_owned());
+        fonts.families.entry(egui::FontFamily::Proportional).or_default().insert(1, "notojp".to_owned());
+
+        cc.egui_ctx.set_fonts(fonts);
+
         if let Some(storage) = cc.storage {
             eframe::get_value(storage, eframe::APP_KEY).unwrap_or_default()
         }
