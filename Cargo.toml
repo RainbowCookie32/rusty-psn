@@ -7,7 +7,7 @@ edition = "2018"
 
 [dependencies]
 bytesize = "1.1.0"
-copypasta = "0.8.1"
+copypasta = "0.8.2"
 sha1_smol = "1.0.0"
 quick-xml = "0.27.1"
 
