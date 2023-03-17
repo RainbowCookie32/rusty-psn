@@ -1,4 +1,6 @@
-#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")] // hide console window on Windows in release
+// This hides the console window that's created on Windows.
+// This is a win for egui users, but it breaks CLI mode in ugly not-very-intuitive ways.
+// #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 #[macro_use] extern crate log;
 mod psn;
 mod utils;
@@ -26,6 +28,11 @@ fn main() {
     #[cfg(feature = "egui")]
     {
         info!("starting egui app");
+
+        if cfg!(windows) {
+            print!("hi. this is an ugly window that shouldn't be here (and wasn't here in previous versions) but if I try to nuke it, cli mode breaks ");
+            println!("so the compromise is you getting a cmd window. if you launched this from cmd and wanted to have a cmd window open, then don't mind me. have fun :)");
+        }
 
         eframe::run_native(
             "rusty-psn",
