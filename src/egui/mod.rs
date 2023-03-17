@@ -315,7 +315,7 @@ impl UpdatesApp {
             ui.label("Title Serial:");
 
             let serial_input = ui.text_edit_singleline(&mut self.v.serial_query);
-            let input_submitted = serial_input.lost_focus() && ui.input().key_pressed(egui::Key::Enter);
+            let input_submitted = serial_input.lost_focus() && ui.input(| i | i.key_pressed(egui::Key::Enter));
 
             serial_input.context_menu(| ui | {
                 ui.add_enabled_ui(self.v.clipboard.is_some(), | ui | {

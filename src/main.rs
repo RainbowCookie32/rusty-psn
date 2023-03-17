@@ -31,6 +31,6 @@ fn main() {
             "rusty-psn",
             eframe::NativeOptions::default(),
             Box::new(|cc| Box::new(egui::UpdatesApp::new(cc)))
-        )
+        ).expect("Failed to run egui app");
     }
 }
