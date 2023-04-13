@@ -9,7 +9,7 @@ edition = "2018"
 bytesize = "1.2.0"
 copypasta = "0.8.2"
 sha1_smol = "1.0.0"
-quick-xml = "0.28.0"
+quick-xml = "0.28.1"
 
 log = "0.4.17"
 simplelog = "0.12.1"
