@@ -128,7 +128,10 @@ impl PackageInfo {
         tx.send(DownloadStatus::Verifying).await.unwrap();
 
         if !crate::utils::hash_file(&mut pkg_file, &self.sha1sum).await? {
-            pkg_file.set_len(0).await.map_err(DownloadError::Tokio)?;
+            if let Err(e) = pkg_file.set_len(0).await {
+                error!("Failed to set file lenght to 0: {e}");
+                return Err(DownloadError::Tokio(e));
+            }
 
             while let Some(download_chunk) = response.chunk().await.map_err(DownloadError::Reqwest)? {
                 let download_chunk = download_chunk.as_ref();
@@ -137,7 +140,11 @@ impl PackageInfo {
                 info!("Received a {} bytes chunk for {serial} {}", download_chunk_len, self.version);
 
                 tx.send(DownloadStatus::Progress(download_chunk_len)).await.unwrap();
-                pkg_file.write_all(download_chunk).await.map_err(DownloadError::Tokio)?;
+
+                if let Err(e) = pkg_file.write_all(download_chunk).await {
+                    error!("Failed to write chunk data: {e}");
+                    return Err(DownloadError::Tokio(e));
+                }
             }
 
             info!("No more chunks available, hashing received file for {serial} {}", self.version);
