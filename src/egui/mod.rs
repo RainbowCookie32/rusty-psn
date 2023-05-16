@@ -494,7 +494,9 @@ impl UpdatesApp {
         let mut show_window = self.v.show_settings_window;
         let mut current_download_path = self.v.modified_settings.pkg_download_path.to_string_lossy().to_string();
 
-        egui::Window::new("Setings").open(&mut show_window).resizable(true).show(ctx, | ui | {
+        // Fixed size avoids a bug that makes the window gradually stretch itself vertically for some reason.
+        // See https://github.com/RainbowCookie32/rusty-psn/issues/138
+        egui::Window::new("Setings").id(egui::Id::new("cfg_win")).open(&mut show_window).fixed_size([220.0, 200.0]).show(ctx, | ui | {
             ui.label("Download Path");
             ui.horizontal(| ui | {
                 ui.add_enabled_ui(false, | ui | {
