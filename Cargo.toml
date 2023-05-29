@@ -11,7 +11,7 @@ copypasta = "0.8.2"
 sha1_smol = "1.0.0"
 quick-xml = "0.28.2"
 
-log = "0.4.17"
+log = "0.4.18"
 simplelog = "0.12.1"
 
 clap = { version = "3.2.23", optional = true, features = ["derive"] }
