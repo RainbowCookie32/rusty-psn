@@ -496,7 +496,7 @@ impl UpdatesApp {
 
         // Fixed size avoids a bug that makes the window gradually stretch itself vertically for some reason.
         // See https://github.com/RainbowCookie32/rusty-psn/issues/138
-        egui::Window::new("Setings").id(egui::Id::new("cfg_win")).open(&mut show_window).fixed_size([220.0, 200.0]).show(ctx, | ui | {
+        egui::Window::new("Settings").id(egui::Id::new("cfg_win")).open(&mut show_window).fixed_size([220.0, 200.0]).show(ctx, | ui | {
             ui.label("Download Path");
             ui.horizontal(| ui | {
                 ui.add_enabled_ui(false, | ui | {
