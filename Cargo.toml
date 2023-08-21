@@ -17,7 +17,7 @@ simplelog = "0.12.1"
 clap = { version = "3.2.23", optional = true, features = ["derive"] }
 crossterm = { version = "0.26.1", optional = true }
 
-reqwest = { version = "0.11.18", default-features = false, features = ["rustls-tls"] }
+reqwest = { version = "0.11.19", default-features = false, features = ["rustls-tls"] }
 
 rfd = { version = "0.11.4", optional = true }
 eframe = { version = "0.21.3", features = ["persistence"], optional = true }
