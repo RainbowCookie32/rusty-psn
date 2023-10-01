@@ -174,11 +174,9 @@ impl PackageInfo {
 }
 
 mod tests {
-    use super::UpdateInfo;
-
     #[tokio::test]
     async fn parse_ac3() {
-        match UpdateInfo::get_info("NPUB30826".to_string()).await {
+        match super::UpdateInfo::get_info("NPUB30826".to_string()).await {
             Ok(info) => assert!(info.packages.len() == 1),
             Err(e) => panic!("Failed to get info for NPUB30826: {:?}", e)
         }
@@ -186,7 +184,7 @@ mod tests {
 
     #[tokio::test]
     async fn parse_lpb() {
-        match UpdateInfo::get_info("BCUS98148".to_string()).await {
+        match super::UpdateInfo::get_info("BCUS98148".to_string()).await {
             Ok(info) => assert!(info.packages.len() == 13),
             Err(e) => panic!("Failed to get info for BCUS98148: {:?}", e)
         }
@@ -194,7 +192,7 @@ mod tests {
 
     #[tokio::test]
     async fn parse_infamous2() {
-        match UpdateInfo::get_info("NPUA80638".to_string()).await {
+        match super::UpdateInfo::get_info("NPUA80638".to_string()).await {
             Ok(info) => assert!(info.packages.len() == 3),
             Err(e) => panic!("Failed to get info for NPUA80638: {:?}", e)
         }
@@ -202,7 +200,7 @@ mod tests {
     
     #[tokio::test]
     async fn parse_tokyo_jungle() {
-        match UpdateInfo::get_info("NPUA80523".to_string()).await {
+        match super::UpdateInfo::get_info("NPUA80523".to_string()).await {
             Ok(info) => assert!(info.packages.len() == 1),
             Err(e) => panic!("Failed to get info for NPUA80523: {:?}", e)
         }
