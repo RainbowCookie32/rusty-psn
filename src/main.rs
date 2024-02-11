@@ -1,6 +1,8 @@
 // On release builds, this hides the console window that's created on Windows.
 #![cfg_attr(all(not(debug_assertions), feature = "egui"), windows_subsystem = "windows")]
 
+use flexi_logger::Logger;
+
 #[macro_use] extern crate log;
 mod psn;
 mod utils;
@@ -10,14 +12,13 @@ mod cli;
 mod egui;
 
 fn main() {
-    if let Ok(log_file) = std::fs::File::create("session_log.log") {
-        let mut config = simplelog::ConfigBuilder::default();
-        config.set_location_level(simplelog::LevelFilter::Error);
-
-        if let Err(e) = simplelog::WriteLogger::init(simplelog::LevelFilter::Info, config.build(), log_file) {
-            println!("failed to set up logging: {}", e);
-        }
-    }
+    Logger::try_with_str("info")
+        .expect("Failed to create logger")
+        .log_to_file(flexi_logger::FileSpec::default())
+        .duplicate_to_stdout(flexi_logger::Duplicate::Error)
+        .start()
+        .expect("Failed to start logger!")
+    ;
 
     #[cfg(feature = "cli")]
     {
