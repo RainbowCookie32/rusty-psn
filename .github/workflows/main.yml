@@ -13,10 +13,10 @@ jobs:
 
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
       - name: Rust Cache
-        uses: Swatinem/rust-cache@v2.2.0
+        uses: Swatinem/rust-cache@v2.7.3
         with:
           key: ${{ matrix.feature }}-${{ matrix.os }}
           cache-on-failure: "true"
@@ -44,14 +44,14 @@ jobs:
 
       - name: Upload artifact (Linux)
         if: ${{ matrix.os == 'ubuntu-latest' }}
-        uses: actions/upload-artifact@v3.1.1
+        uses: actions/upload-artifact@v4
         with:
           name: rusty-psn-${{ matrix.feature }}-linux
           path: result
 
       - name: Upload artifact (Windows)
         if: ${{ matrix.os == 'windows-latest' }}
-        uses: actions/upload-artifact@v3.1.1
+        uses: actions/upload-artifact@v4
         with:
           name: rusty-psn-${{ matrix.feature }}-windows
           path: result
