@@ -1,7 +1,13 @@
 # rusty-psn
 A simple tool to grab updates for PS3 games, directly from Sony's servers using their updates API. Available for both Linux and Windows, in both GUI and CLI alternatives.
 
-The Linux GUI build might need some extra dependencies installed to work. According to egui's README:
+## Usage
+Go to the [latest release](https://github.com/RainbowCookie32/rusty-psn/releases/latest) page and download the file you'll use from the Assets section:
+- If you want to use the GUI version of rusty-psn, then download the `rusty-psn-egui-windows.zip` or `rusty-psn-egui-linux.zip` file, depending on your OS.
+- If you want to use the CLI version of rusty-psn, then download the `rusty-psn-cli-windows.zip` or `rusty-psn-cli-linux.zip` file, depending on your OS.
+- If you are using macOS, you can use the Dockerfile below to run the CLI build of rusty-psn. While the egui build might be able to compile and run natively on macOS, I don't have the means to test it so it's an unsupported configuration. You are on your own.
+
+After the selected file is downloaded, **extract it** and run the executable file. For the Linux egui builds, you'll need to install some dependencies (sourced from [egui's README](https://github.com/emilk/egui/blob/0.26.2/README.md)):
 
 - Ubuntu:
 ```
