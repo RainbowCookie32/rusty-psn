@@ -170,33 +170,40 @@ impl UpdatesApp {
     }
 
     fn handle_search_promise(&mut self, toasts: &mut Vec<(String, ToastLevel)>) -> Option<()> {
-        let promise = self.v.search_promise.as_ref()?;
-        let promise_ready = promise.ready()?;
+        let is_ready = {
+            let promise = self.v.search_promise.as_ref()?;
+            promise.ready()?.is_ok()
+        };
+
+        if is_ready {
+            let promise = self.v.search_promise.take()?;
+            let promise_ready = promise.block_and_take();
+
+            match promise_ready {
+                Ok(update_info) => {
+                    info!("Received search results for serial {}", update_info.title_id);
+                    self.v.update_results.push(update_info);
+                }
+                Err(ref e) => {
+                    match e {
+                        UpdateError::InvalidSerial => {
+                            toasts.push((String::from("The provided serial didn't give any results, double-check your input."), ToastLevel::Error));
+                        }
+                        UpdateError::NoUpdatesAvailable => {
+                            toasts.push((String::from("The provided serial doesn't have any available updates."), ToastLevel::Error));
+                        }
+                        UpdateError::Reqwest(e) => {
+                            toasts.push((format!("There was an error completing the request ({e})."), ToastLevel::Error));
+                        }
+                        UpdateError::XmlParsing(e) => {
+                            toasts.push((format!("Error parsing response from Sony, try again later ({e})."), ToastLevel::Error));
+                        }
+                    }
         
-        if let Ok(update_info) = promise_ready {
-            info!("Received search results for serial {}", update_info.title_id);
-            self.v.update_results.push(update_info.clone());
-        }
-        else if let Err(e) = promise_ready {
-            match e {
-                UpdateError::InvalidSerial => {
-                    toasts.push((String::from("The provided serial didn't give any results, double-check your input."), ToastLevel::Error));
-                }
-                UpdateError::NoUpdatesAvailable => {
-                    toasts.push((String::from("The provided serial doesn't have any available updates."), ToastLevel::Error));
-                }
-                UpdateError::Reqwest(e) => {
-                    toasts.push((format!("There was an error completing the request ({e})."), ToastLevel::Error));
-                }
-                UpdateError::XmlParsing(e) => {
-                    toasts.push((format!("Error parsing response from Sony, try again later ({e})."), ToastLevel::Error));
+                    error!("Error received from updates query: {:?}", e);
                 }
             }
-
-            error!("Error received from updates query: {:?}", e);
         }
-        
-        self.v.search_promise = None;
 
         Some(())
     }

@@ -29,7 +29,6 @@ pub enum UpdateError {
     XmlParsing(quick_xml::Error),
 }
 
-#[derive(Clone)]
 pub struct UpdateInfo {
     pub title_id: String,
     pub tag_name: String,
