@@ -55,6 +55,7 @@ struct VolatileData {
     update_results: Vec<UpdateInfo>,
 
     show_settings_window: bool,
+    show_mismatch_warning_window: bool,
 
     settings_dirty: bool,
     modified_settings: AppSettings,
@@ -90,6 +91,7 @@ impl Default for VolatileData {
             update_results: Vec::new(),
 
             show_settings_window: false,
+            show_mismatch_warning_window: false,
 
             settings_dirty: false,
             modified_settings: AppSettings::default(),
@@ -124,6 +126,10 @@ impl eframe::App for UpdatesApp {
 
         if self.v.show_settings_window {
             self.draw_settings_window(ctx);
+        }
+
+        if self.v.show_mismatch_warning_window {
+            self.draw_hash_mismatch_window(ctx);
         }
 
         let mut toasts = Vec::new();
@@ -214,7 +220,7 @@ impl UpdatesApp {
         for (i, download) in self.v.download_queue.iter_mut().enumerate() {
             if let Ok(status) = download.progress_rx.try_recv() {
                 if let DownloadStatus::Progress(progress) = status {
-                    info!("Received {progress} bytes for active download ({} {})", download.id, download.version);
+                    // info!("Received {progress} bytes for active download ({} {})", download.id, download.version);
                     download.progress += progress;
                 }
 
@@ -239,8 +245,12 @@ impl UpdatesApp {
                         self.v.failed_downloads.push((download.id.clone(), download.version.clone()));
 
                         match e {
-                            DownloadError::HashMismatch => {
+                            DownloadError::HashMismatch(short_on_data) => {
                                 toasts.push((format!("Failed to download {} v{}: Hash mismatch.", download.id, download.version), ToastLevel::Error));
+
+                                if *short_on_data {
+                                    self.v.show_mismatch_warning_window = true;
+                                }
                             }
                             DownloadError::Tokio(_) => {
                                 toasts.push((format!("Failed to download {} v{}. Check the log for details.", download.id, download.version), ToastLevel::Error));
@@ -565,5 +575,25 @@ impl UpdatesApp {
         if !show_window {
             self.v.show_settings_window = false;
         }
+    }
+
+    fn draw_hash_mismatch_window(&mut self, ctx: &egui::Context) {
+        egui::Window::new("File integrity check failed").collapsible(false).fixed_size([550.0, 100.0]).show(ctx, | ui | {
+            ui.vertical_centered(| ui | {
+                ui.label(egui::RichText::new("The integrity check for a downloaded file failed.").color(egui::Color32::YELLOW).heading());
+                ui.label(egui::RichText::new("Considering the file is smaller than expected, it's likely that Sony's servers are being unreliable.").strong());
+                ui.label(egui::RichText::new("You should try to download the file again, or wait for a few hours before retrying. Sony's servers should eventually be able handle a complete download.").strong());
+
+                ui.small("fix your shit already sony, it's been years of unreliable downloads.");
+            });
+
+            ui.separator();
+
+            ui.vertical_centered(| ui | {
+                if ui.button("Close message").clicked() {
+                    self.v.show_mismatch_warning_window = false;
+                }
+            });
+        });
     }
 }

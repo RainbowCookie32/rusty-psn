@@ -16,7 +16,9 @@ pub enum DownloadStatus {
 
 #[derive(Debug)]
 pub enum DownloadError {
-    HashMismatch,
+    // bool represents whether we received less data than expected.
+    // Sony's servers like to drop out before the transfer is actually completed.
+    HashMismatch(bool),
     Tokio(tokio::io::Error),
     Reqwest(reqwest::Error)
 }
@@ -132,10 +134,13 @@ impl PackageInfo {
                 return Err(DownloadError::Tokio(e));
             }
 
+            let mut received_data = 0;
+
             while let Some(download_chunk) = response.chunk().await.map_err(DownloadError::Reqwest)? {
                 let download_chunk = download_chunk.as_ref();
                 let download_chunk_len = download_chunk.len() as u64;
 
+                received_data += download_chunk_len;
                 info!("Received a {} bytes chunk for {serial} {}", download_chunk_len, self.version);
 
                 tx.send(DownloadStatus::Progress(download_chunk_len)).await.unwrap();
@@ -144,6 +149,10 @@ impl PackageInfo {
                     error!("Failed to write chunk data: {e}");
                     return Err(DownloadError::Tokio(e));
                 }
+            }
+
+            if received_data < self.size {
+                warn!("Received less data than expected for pkg file! Expected {} bytes, received {} bytes.", self.size, received_data)
             }
 
             info!("No more chunks available, hashing received file for {serial} {}", self.version);
@@ -160,7 +169,7 @@ impl PackageInfo {
                 error!("Hash mismatch for {serial} {}!", self.version);
                 tx.send(DownloadStatus::DownloadFailure).await.unwrap();
 
-                Err(DownloadError::HashMismatch)
+                Err(DownloadError::HashMismatch(received_data < self.size))
             }
         }
         else {

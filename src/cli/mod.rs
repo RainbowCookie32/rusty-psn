@@ -192,9 +192,13 @@ pub fn start_app() {
                     Some(result) => {
                         if let Err(e) = result {
                             match e {
-                                DownloadError::HashMismatch => {
-                                    error!("Download of {} {} failed: hash mismatch", update.title_id, pkg.version);
-                                    println!("Error downloading update: hash mismatch on downloaded file.")
+                                DownloadError::HashMismatch(short_on_data) => {
+                                    error!("Download of {} {} failed: hash mismatch. (short on data: {})", update.title_id, pkg.version, short_on_data);
+                                    println!("Error downloading update: hash mismatch on downloaded file.");
+
+                                    if *short_on_data {
+                                        println!("The downloaded file is smaller than expected. Please try again later, as Sony's servers can sometimes be unreliable");   
+                                    }
                                 }
                                 DownloadError::Tokio(e) => {
                                     error!("Download of {} {} failed: {e}", update.title_id, pkg.version);
