@@ -10,10 +10,30 @@ use tokio::io::{AsyncReadExt, AsyncSeekExt, SeekFrom};
 
 use crate::psn::DownloadError;
 
-pub async fn create_pkg_file(path: PathBuf) -> Result<File, DownloadError> {
-    info!("Creating file for pkg at path {:?}", path);
+pub async fn create_pkg_file(download_path: PathBuf, serial: &str, title: &str, pkg_name: &str) -> Result<File, DownloadError> {
+    let mut target_path = download_path;
+    target_path.push(serial);
 
-    match fs::create_dir_all(&path.parent().unwrap()).await {
+    // Check for the old path format.
+    if target_path.exists() {
+        let old_path = target_path.clone();
+        target_path.pop();
+        target_path.push(format!("{serial} - {title}"));
+
+        info!("Found a folder with the old name format, trying to rename to current one.");
+
+        if let Err(e) = fs::rename(old_path, &target_path).await {
+            error!("Failed to rename folder: {e}");
+        }
+    }
+    
+    target_path.pop();
+    target_path.push(format!("{serial} - {title}"));
+    target_path.push(pkg_name);
+
+    info!("Creating file for pkg at path {:?}", target_path);
+
+    match fs::create_dir_all(&target_path.parent().unwrap()).await {
         Ok(_) => info!("Created directory for updates"),
         Err(e) => {
             match e.kind() {
@@ -29,7 +49,7 @@ pub async fn create_pkg_file(path: PathBuf) -> Result<File, DownloadError> {
         .create(true)
         .read(true)
         .write(true)
-        .open(path).await.map_err(DownloadError::Tokio)
+        .open(target_path).await.map_err(DownloadError::Tokio)
 }
 
 pub async fn hash_file(file: &mut File, hash: &str) -> Result<bool, DownloadError> {

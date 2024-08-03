@@ -72,8 +72,19 @@ impl UpdateInfo {
             Err(UpdateError::InvalidSerial)
         }
         else {
-            parser::parse_response(response_txt)
-                .map_err(UpdateError::XmlParsing)
+            match parser::parse_response(response_txt) {
+                Ok(info) => {
+                    if info.title_id.is_empty() || info.packages.is_empty() {
+                        Err(UpdateError::NoUpdatesAvailable)
+                    }
+                    else {
+                        Ok(info)
+                    }
+                }
+                Err(e) => {
+                    Err(UpdateError::XmlParsing(e))
+                }
+            }
         }
     }
 }
@@ -96,7 +107,7 @@ impl PackageInfo {
         }
     }
 
-    pub async fn start_download(&self, tx: Sender<DownloadStatus>, serial: String, mut download_path: PathBuf) -> Result<(), DownloadError> {
+    pub async fn start_download(&self, tx: Sender<DownloadStatus>, download_path: PathBuf, serial: String, title: String) -> Result<(), DownloadError> {
         info!("Starting download for for {serial} {}", self.version);
         info!("Sending pkg file request to url: {}", &self.url);
 
@@ -121,10 +132,10 @@ impl PackageInfo {
             .unwrap_or_else(|| String::from("update.pkg"))
         ;
 
+        let download_path = download_path;
         info!("Response received, file name is {file_name}");
-        download_path.push(format!("{serial}/{file_name}"));
 
-        let mut pkg_file = crate::utils::create_pkg_file(download_path).await?;
+        let mut pkg_file = crate::utils::create_pkg_file(download_path, &serial, &title, &file_name).await?;
 
         tx.send(DownloadStatus::Verifying).await.unwrap();
 
