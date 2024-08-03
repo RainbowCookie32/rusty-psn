@@ -72,8 +72,19 @@ impl UpdateInfo {
             Err(UpdateError::InvalidSerial)
         }
         else {
-            parser::parse_response(response_txt)
-                .map_err(UpdateError::XmlParsing)
+            match parser::parse_response(response_txt) {
+                Ok(info) => {
+                    if info.title_id.is_empty() || info.packages.is_empty() {
+                        Err(UpdateError::NoUpdatesAvailable)
+                    }
+                    else {
+                        Ok(info)
+                    }
+                }
+                Err(e) => {
+                    Err(UpdateError::XmlParsing(e))
+                }
+            }
         }
     }
 }
