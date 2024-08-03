@@ -5,7 +5,7 @@ use super::{UpdateInfo, PackageInfo};
 
 pub fn parse_response(response: String) -> Result<UpdateInfo, Error> {
     let mut reader = Reader::from_str(&response);
-    reader.trim_text(true);
+    reader.config_mut().trim_text(true);
 
     let mut depth = 0;
     let mut title_element = false;
