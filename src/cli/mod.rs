@@ -176,9 +176,11 @@ pub fn start_app() {
             let download_path = destination_path.clone();
 
             let dpkg = pkg.clone();
+            let dtitle = title.clone();
+
             let promise = Promise::spawn_async(
                 async move {
-                    dpkg.start_download(tx, serial, download_path).await
+                    dpkg.start_download(tx, download_path, serial, dtitle).await
                 }
             );
 

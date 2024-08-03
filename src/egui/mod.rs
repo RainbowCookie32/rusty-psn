@@ -271,9 +271,9 @@ impl UpdatesApp {
         }
     }
 
-    fn start_download(&self, title_id: String, pkg: PackageInfo) -> ActiveDownload {
+    fn start_download(&self, serial: String, title: String, pkg: PackageInfo) -> ActiveDownload {
         let (tx, rx) = tokio::sync::mpsc::channel(10);
-        let serial = title_id.clone();
+        let id = serial.clone();
         let version = pkg.version.clone();
         let download_size = pkg.size;
         let download_path = self.settings.pkg_download_path.clone();
@@ -282,12 +282,12 @@ impl UpdatesApp {
 
         let download_promise = Promise::spawn_async(
             async move {
-                pkg.start_download(tx, serial, download_path).await
+                pkg.start_download(tx, download_path, serial, title).await
             }
         );
 
         ActiveDownload {
-            id: title_id,
+            id,
             version,
 
             size: download_size,
@@ -415,12 +415,21 @@ impl UpdatesApp {
 
         egui::collapsing_header::CollapsingState::load_with_default_open(ctx, id, false)
             .show_header(ui, | ui | {
-                let collapsing_title = {
+                let title = {
                     if let Some(title) = update.titles.get(0) {
+                        title.clone()
+                    }
+                    else {
+                        String::new()
+                    }
+                };
+
+                let collapsing_title = {
+                    if !title.is_empty() {
                         format!("{title_id} - {title} ({update_count} update(s) - {} total)", ByteSize::b(total_updates_size))
                     }
                     else {
-                        title_id.clone()
+                        format!("{title_id} ({update_count} update(s) - {} total)", ByteSize::b(total_updates_size))
                     }
                 };
 
@@ -435,7 +444,7 @@ impl UpdatesApp {
                         // Avoid duplicates by checking if there's already a download for this serial and version on the queue.
                         if !self.v.download_queue.iter().any(| d | &d.id == title_id && d.version == pkg.version) {
                             info!("Downloading update {} for serial {title_id} (group)", pkg.version);
-                            new_downloads.push(self.start_download(title_id.to_string(), pkg.clone()));
+                            new_downloads.push(self.start_download(title_id.to_string(), title.clone(), pkg.clone()));
                         }
                     }
                 }
@@ -444,7 +453,16 @@ impl UpdatesApp {
                 ui.add_space(5.0);
 
                 for pkg in update.packages.iter() {
-                    if let Some(download) = self.draw_entry_pkg(ui, pkg, title_id) {
+                    let title = {
+                        if let Some(title) = update.titles.get(0) {
+                            title.clone()
+                        }
+                        else {
+                            String::new()
+                        }
+                    };
+
+                    if let Some(download) = self.draw_entry_pkg(ui, pkg, title_id, title) {
                         new_downloads.push(download);
                     }
 
@@ -459,7 +477,7 @@ impl UpdatesApp {
         new_downloads
     }
 
-    fn draw_entry_pkg(&self, ui: &mut egui::Ui, pkg: &PackageInfo, title_id: &str) -> Option<ActiveDownload> {
+    fn draw_entry_pkg(&self, ui: &mut egui::Ui, pkg: &PackageInfo, title_id: &str, title: String) -> Option<ActiveDownload> {
         let mut download = None;
 
         ui.group(| ui | {
@@ -477,7 +495,7 @@ impl UpdatesApp {
                 
                 if ui.add_enabled(existing_download.is_none(), egui::Button::new("Download file")).clicked() {
                     info!("Downloading update {} for serial {} (individual)", pkg.version, title_id);
-                    download = Some(self.start_download(title_id.to_string(), pkg.clone()));
+                    download = Some(self.start_download(title_id.to_string(), title, pkg.clone()));
                 }
                 
                 if let Some(download) = existing_download {
