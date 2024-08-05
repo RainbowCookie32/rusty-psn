@@ -10,7 +10,14 @@ use tokio::io::{AsyncReadExt, AsyncSeekExt, SeekFrom};
 
 use crate::psn::DownloadError;
 
+fn sanitize_title(title: &str) -> String {
+   //replace invalid characters with underscores or anything we want lol
+   title.replace(|c: char| !c.is_alphanumeric() && c != ' ' && c != '-', "_")
+
+}
+
 pub async fn create_pkg_file(download_path: PathBuf, serial: &str, title: &str, pkg_name: &str) -> Result<File, DownloadError> {
+    let sanitized_title = sanitize_title(title);
     let mut target_path = download_path;
     target_path.push(serial);
 
@@ -18,29 +25,33 @@ pub async fn create_pkg_file(download_path: PathBuf, serial: &str, title: &str, 
     if target_path.exists() {
         let old_path = target_path.clone();
         target_path.pop();
-        target_path.push(format!("{serial} - {title}"));
+        target_path.push(format!("{} - {}", serial, sanitized_title));
 
         info!("Found a folder with the old name format, trying to rename to current one.");
 
-        if let Err(e) = fs::rename(old_path, &target_path).await {
+        if let Err(e) = fs::rename(&old_path, &target_path).await {
             error!("Failed to rename folder: {e}");
         }
     }
     
     target_path.pop();
-    target_path.push(format!("{serial} - {title}"));
+    target_path.push(format!("{} - {}", serial, sanitized_title));
     target_path.push(pkg_name);
 
     info!("Creating file for pkg at path {:?}", target_path);
 
-    match fs::create_dir_all(&target_path.parent().unwrap()).await {
-        Ok(_) => info!("Created directory for updates"),
-        Err(e) => {
-            match e.kind() {
-                io::ErrorKind::AlreadyExists => {},
-                _ => return Err(DownloadError::Tokio(e))
+    if let Some(parent) = target_path.parent() {
+        match fs::create_dir_all(parent).await {
+            Ok(_) => info!("Created directory for updates"),
+            Err(e) => {
+                match e.kind() {
+                    io::ErrorKind::AlreadyExists => {},
+                    _ => return Err(DownloadError::Tokio(e)),
+                }
             }
         }
+    } else {
+        return Err(DownloadError::Tokio(io::Error::new(io::ErrorKind::Other, "Target path has no parent directory")));
     }
 
     // Using OpenOptions to avoid the file getting truncated if it already exists
@@ -49,7 +60,9 @@ pub async fn create_pkg_file(download_path: PathBuf, serial: &str, title: &str, 
         .create(true)
         .read(true)
         .write(true)
-        .open(target_path).await.map_err(DownloadError::Tokio)
+        .open(target_path)
+        .await
+        .map_err(DownloadError::Tokio)
 }
 
 pub async fn hash_file(file: &mut File, hash: &str) -> Result<bool, DownloadError> {
