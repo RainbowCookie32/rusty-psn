@@ -178,7 +178,7 @@ impl UpdatesApp {
     fn handle_search_promise(&mut self, toasts: &mut Vec<(String, ToastLevel)>) -> Option<()> {
         let is_ready = {
             let promise = self.v.search_promise.as_ref()?;
-            promise.ready()?.is_ok()
+            promise.ready().is_some()
         };
 
         if is_ready {
