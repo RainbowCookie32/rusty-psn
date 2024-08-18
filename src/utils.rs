@@ -10,10 +10,15 @@ use tokio::io::{AsyncReadExt, AsyncSeekExt, SeekFrom};
 
 use crate::psn::DownloadError;
 
+#[cfg(target_os = "windows")]
+const INVALID_CHARS: [char; 9] = ['<', '>', ':', '"', '/', '\\', '|', '?', '*'];
+
+#[cfg(target_os = "linux")]
+const INVALID_CHARS: [char; 1] = ['/'];
+
 fn sanitize_title(title: &str) -> String {
    //replace invalid characters with underscores or anything we want lol
-   title.replace(|c: char| !c.is_alphanumeric() && c != ' ' && c != '-', "_")
-
+   title.replace(| c | INVALID_CHARS.contains(&c), "_")
 }
 
 pub async fn create_pkg_file(download_path: PathBuf, serial: &str, title: &str, pkg_name: &str) -> Result<File, DownloadError> {
