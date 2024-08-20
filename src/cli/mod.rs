@@ -1,27 +1,15 @@
 use std::io::Write;
 use std::path::PathBuf;
 
-use clap::Parser;
 use bytesize::ByteSize;
 use poll_promise::Promise;
 use tokio::runtime::Runtime;
 use crossterm::{cursor, terminal};
 
 use crate::psn::*;
+use crate::Args;
 
-#[derive(Debug, Parser)]
-#[clap(author, version, about)]
-struct Args {
-    #[clap(short, long, required = true, help = "The serial(s) you want to search for, in quotes and separated by spaces")]
-    titles: Vec<String>,
-    #[clap(short, long, help = "Downloads all available updates printing only errors, without needing user intervention.")]
-    silent: bool,
-    #[clap(short, long, help = "Target folder to save the downloaded update files to.")]
-    destination_path: Option<PathBuf>
-}
-
-pub fn start_app() {
-    let args = Args::parse();
+pub fn start_app(args: Args) {
     let runtime = Runtime::new().unwrap();
 
     let _guard = runtime.enter();
