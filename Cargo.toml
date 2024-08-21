@@ -14,7 +14,7 @@ quick-xml = "0.36.1"
 log = "0.4.22"
 flexi_logger = "0.28.5"
 
-clap = { version = "4.5.13", optional = true, features = ["derive"] }
+clap = { version = "4.5.13", features = ["derive"] }
 crossterm = { version = "0.28.1", optional = true }
 
 reqwest = { version = "0.12.5", default-features = false, features = ["rustls-tls"] }
@@ -30,5 +30,5 @@ tokio = { version = "1.39.2", default-features = false, features = ["rt", "io-ut
 
 [features]
 default = ["egui"]
-cli = ["clap", "crossterm"]
+cli = ["crossterm"]
 egui = ["rfd", "eframe", "egui-notify", "notify-rust"]
