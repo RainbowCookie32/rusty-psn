@@ -45,6 +45,10 @@ pub fn start_app(args: Args) {
                 }
                 Err(e) => {
                     match e {
+                        UpdateError::UnhandledErrorResponse(e) => {
+                            error!("Unexpected error received in response from PSN: {e}");
+                            println!("{id}: PSN returned an unexpected error: {e}.");
+                        }
                         UpdateError::InvalidSerial => {
                             error!("Invalid serial for updates query {id}");
                             println!("{id}: The provided serial didn't give any results, double-check your input.");

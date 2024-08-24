@@ -192,6 +192,9 @@ impl UpdatesApp {
                 }
                 Err(ref e) => {
                     match e {
+                        UpdateError::UnhandledErrorResponse(e) => {
+                            toasts.push((format!("Unexpected error received in a response from PSN ({e})."), ToastLevel::Error));
+                        }
                         UpdateError::InvalidSerial => {
                             toasts.push((String::from("The provided serial didn't give any results, double-check your input."), ToastLevel::Error));
                         }
