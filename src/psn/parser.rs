@@ -1,9 +1,15 @@
-use quick_xml::{Reader, Error};
+use quick_xml::Reader;
 use quick_xml::events::Event;
 
 use super::{UpdateInfo, PackageInfo};
 
-pub fn parse_response(response: String) -> Result<UpdateInfo, Error> {
+#[derive(Debug)]
+pub enum ParseError {
+    ErrorCode(String),
+    XmlParsing(quick_xml::Error),
+}
+
+pub fn parse_response(response: String) -> Result<UpdateInfo, ParseError> {
     let mut reader = Reader::from_str(&response);
     reader.config_mut().trim_text(true);
 
@@ -12,6 +18,8 @@ pub fn parse_response(response: String) -> Result<UpdateInfo, Error> {
     let mut event_buf = Vec::new();
 
     let mut info = UpdateInfo::empty();
+    let mut err_encountered = false;
+    let mut err_code_encountered = false;
 
     loop {
         match reader.read_event_into(&mut event_buf) {
@@ -41,7 +49,7 @@ pub fn parse_response(response: String) -> Result<UpdateInfo, Error> {
                         for attribute in e.attributes().filter_map(| a | a.ok()) {
                             match attribute.key.as_ref() {
                                 b"version" => {
-                                    let value = attribute.unescape_value()?;
+                                    let value = attribute.unescape_value().map_err(ParseError::XmlParsing)?;
 
                                     let mut package = PackageInfo::empty();
                                     package.version = value.to_string();
@@ -50,7 +58,7 @@ pub fn parse_response(response: String) -> Result<UpdateInfo, Error> {
                                 }
                                 b"size" => {
                                     if let Some(last) = info.packages.last_mut() {
-                                        let value = attribute.unescape_value()?;
+                                        let value = attribute.unescape_value().map_err(ParseError::XmlParsing)?;
                                         let parsed_value = value.parse::<u64>().unwrap_or_default();
 
                                         last.size = parsed_value;
@@ -58,13 +66,13 @@ pub fn parse_response(response: String) -> Result<UpdateInfo, Error> {
                                 }
                                 b"sha1sum" => {
                                     if let Some(last) = info.packages.last_mut() {
-                                        let value = attribute.unescape_value()?;
+                                        let value = attribute.unescape_value().map_err(ParseError::XmlParsing)?;
                                         last.sha1sum = value.to_string();
                                     }
                                 }
                                 b"url" => {
                                     if let Some(last) = info.packages.last_mut() {
-                                        let value = attribute.unescape_value()?;
+                                        let value = attribute.unescape_value().map_err(ParseError::XmlParsing)?;
                                         last.url = value.to_string();
                                     }
                                 }
@@ -75,7 +83,15 @@ pub fn parse_response(response: String) -> Result<UpdateInfo, Error> {
                         }
                     }
                     b"Error" => {
-                        break;
+                        err_encountered = true;
+                    }
+                    b"Code" => {
+                        if !err_encountered {
+                            warn!("Code tag encountered without a preceeding Error tag, skipping it");
+                            continue;
+                        }
+
+                        err_code_encountered = true;
                     }
                     _ => {
                         let name = e.name();
@@ -95,7 +111,7 @@ pub fn parse_response(response: String) -> Result<UpdateInfo, Error> {
                     for attribute in e.attributes().filter_map(| a | a.ok()) {
                         match attribute.key.as_ref() {
                             b"version" => {
-                                let value = attribute.unescape_value()?;
+                                let value = attribute.unescape_value().map_err(ParseError::XmlParsing)?;
 
                                 let mut package = PackageInfo::empty();
                                 package.version = value.to_string();
@@ -104,7 +120,7 @@ pub fn parse_response(response: String) -> Result<UpdateInfo, Error> {
                             }
                             b"size" => {
                                 if let Some(last) = info.packages.last_mut() {
-                                    let value = attribute.unescape_value()?;
+                                    let value = attribute.unescape_value().map_err(ParseError::XmlParsing)?;
                                     let parsed_value = value.parse::<u64>().unwrap_or_default();
 
                                     last.size = parsed_value;
@@ -112,13 +128,13 @@ pub fn parse_response(response: String) -> Result<UpdateInfo, Error> {
                             }
                             b"sha1sum" => {
                                 if let Some(last) = info.packages.last_mut() {
-                                    let value = attribute.unescape_value()?;
+                                    let value = attribute.unescape_value().map_err(ParseError::XmlParsing)?;
                                     last.sha1sum = value.to_string();
                                 }
                             }
                             b"url" => {
                                 if let Some(last) = info.packages.last_mut() {
-                                    let value = attribute.unescape_value()?;
+                                    let value = attribute.unescape_value().map_err(ParseError::XmlParsing)?;
                                     last.url = value.to_string();
                                 }
                             }
@@ -131,15 +147,22 @@ pub fn parse_response(response: String) -> Result<UpdateInfo, Error> {
             }
             Ok(Event::Text(e)) => {
                 if title_element {
-                    let title = e.unescape()?;
+                    let title = e.unescape().map_err(ParseError::XmlParsing)?;
                     
                     title_element = false;
                     info.titles.push(title.to_string());
+                } else if err_code_encountered {
+                    let err_code_text = e.unescape().map_err(ParseError::XmlParsing)?;
+                    return Err(ParseError::ErrorCode(err_code_text.into()));
                 }
             }
             Ok(Event::Eof) => break,
             _ => {}
         }
+    }
+
+    if err_encountered {
+        warn!("Error tag encountered without a following Code tag");
     }
 
     if depth != 0 {

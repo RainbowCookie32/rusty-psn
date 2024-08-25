@@ -27,6 +27,7 @@ pub enum DownloadError {
 pub enum UpdateError {
     InvalidSerial,
     NoUpdatesAvailable,
+    UnhandledErrorResponse(String),
     Reqwest(reqwest::Error),
     XmlParsing(quick_xml::Error),
 }
@@ -85,7 +86,16 @@ impl UpdateInfo {
                     }
                 }
                 Err(e) => {
-                    Err(UpdateError::XmlParsing(e))
+                    match e {
+                        parser::ParseError::ErrorCode(reason) => {
+                            if reason == "NoSuchKey" {
+                                return Err(UpdateError::InvalidSerial);
+                            }
+
+                            return Err(UpdateError::UnhandledErrorResponse(reason));
+                        },
+                        parser::ParseError::XmlParsing(reason) => Err(UpdateError::XmlParsing(reason))
+                    }
                 }
             }
         }
