@@ -52,10 +52,7 @@ impl UpdateInfo {
     }
 
     pub async fn get_info(title_id: String) -> Result<UpdateInfo, UpdateError> {
-        let title_id = title_id
-            .trim()
-            .replace("-", "") // strip the dash that some sites put in a title id, eg. BCES-xxxxx
-            .to_uppercase();
+        let title_id = parse_title_id(&title_id);
         let url = format!("https://a0.ww.np.dl.playstation.net/tpl/np/{0}/{0}-ver.xml", title_id);
         let client = reqwest::ClientBuilder::default()
             // Sony has funky certificates, so this needs to be enabled.
@@ -100,6 +97,13 @@ impl UpdateInfo {
             }
         }
     }
+}
+
+pub fn parse_title_id(title_id: &String) -> String {
+    return title_id
+        .trim()
+        .replace("-", "") // strip the dash that some sites put in a title id, eg. BCES-xxxxx
+        .to_uppercase();
 }
 
 #[derive(Clone)]
