@@ -362,16 +362,20 @@ impl UpdatesApp {
             ui.separator();
             
             ui.add_enabled_ui(!self.v.serial_query.is_empty() && self.v.search_promise.is_none(), | ui | {
-                let already_searched = self.v.update_results.iter().any(|e| e.title_id == self.v.serial_query);
+                if !input_submitted && !ui.button("Search for updates").clicked() { return; }
 
-                if (input_submitted || ui.button("Search for updates").clicked()) && !already_searched {
-                    info!("Fetching updates for '{}'", self.v.serial_query);
-
-                    let _guard = self.v.rt.enter();
-                    let promise = Promise::spawn_async(UpdateInfo::get_info(self.v.serial_query.clone()));
-                    
-                    self.v.search_promise = Some(promise);
+                let already_searched = self.v.update_results.iter().any(|e| e.title_id == parse_title_id(&self.v.serial_query));
+                if already_searched { 
+                    self.show_notifications("Provided title id results already shown", ToastLevel::Info);
+                    return;
                 }
+
+                info!("Fetching updates for '{}'", self.v.serial_query);
+
+                let _guard = self.v.rt.enter();
+                let promise = Promise::spawn_async(UpdateInfo::get_info(self.v.serial_query.clone()));
+                
+                self.v.search_promise = Some(promise);
             });
 
             ui.add_enabled_ui(!self.v.update_results.is_empty(), | ui | {
