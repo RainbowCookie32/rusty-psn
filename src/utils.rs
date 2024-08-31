@@ -10,10 +10,10 @@ use tokio::io::{AsyncReadExt, AsyncSeekExt, SeekFrom};
 
 use crate::psn::DownloadError;
 
-#[cfg(target_os = "windows")]
+#[cfg(target_family = "windows")]
 const INVALID_CHARS: [char; 9] = ['<', '>', ':', '"', '/', '\\', '|', '?', '*'];
 
-#[cfg(target_os = "linux")]
+#[cfg(target_family = "unix")]
 const INVALID_CHARS: [char; 1] = ['/'];
 
 fn sanitize_title(title: &str) -> String {
