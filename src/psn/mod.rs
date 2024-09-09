@@ -74,11 +74,21 @@ impl UpdateInfo {
         }
         else {
             match parser::parse_response(response_txt) {
-                Ok(info) => {
+                Ok(mut info) => {
                     if info.title_id.is_empty() || info.packages.is_empty() {
                         Err(UpdateError::NoUpdatesAvailable)
                     }
                     else {
+                        // This abomination comes courtesy of BCUS98233.
+                        // For some ungodly reason, the title has a newline (/n), which of course causes issues
+                        // both when displaying the title and when trying to create a folder to put the files in.
+                        let titles = &info.titles;
+                        info.titles = titles
+                            .into_iter()
+                            .map(| title | title.replace("\n", " "))
+                            .collect()
+                        ;
+
                         Ok(info)
                     }
                 }
