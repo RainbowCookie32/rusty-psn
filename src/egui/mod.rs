@@ -417,6 +417,7 @@ impl UpdatesApp {
 
         let title_id = &update.title_id;
         let update_count = update.packages.len();
+        let platform_variant = update.platform_variant;
 
         let id = egui::Id::new(format!("pkg_header_{title_id}"));
 
@@ -433,10 +434,10 @@ impl UpdatesApp {
 
                 let collapsing_title = {
                     if !title.is_empty() {
-                        format!("{title_id} - {title} ({update_count} update(s) - {} total)", ByteSize::b(total_updates_size))
+                        format!("[{platform_variant}] {title_id} - {title} ({update_count} update(s) - {} total)", ByteSize::b(total_updates_size))
                     }
                     else {
-                        format!("{title_id} ({update_count} update(s) - {} total)", ByteSize::b(total_updates_size))
+                        format!("[{platform_variant}] {title_id} ({update_count} update(s) - {} total)", ByteSize::b(total_updates_size))
                     }
                 };
 

@@ -1,6 +1,7 @@
 mod parser;
 
 use core::str;
+use std::fmt;
 use std::path::PathBuf;
 
 use hmac::{Hmac, Mac};
@@ -43,16 +44,18 @@ pub struct UpdateInfo {
 
     pub titles: Vec<String>,
     pub packages: Vec<PackageInfo>,
+    pub platform_variant: PlaformVariant,
 }
 
 impl UpdateInfo {
-    fn empty() -> UpdateInfo {
+    fn empty(platform_variant: PlaformVariant) -> UpdateInfo {
         UpdateInfo {
             title_id: String::new(),
             tag_name: String::new(),
 
             titles: Vec::new(),
             packages: Vec::new(),
+            platform_variant,
         }
     }
 
@@ -85,7 +88,7 @@ impl UpdateInfo {
             Err(UpdateError::InvalidSerial)
         }
         else {
-            match parser::parse_response(response_txt) {
+            match parser::parse_response(response_txt, platform_variant) {
                 Ok(mut info) => {
                     if info.title_id.is_empty() || info.packages.is_empty() {
                         Err(UpdateError::NoUpdatesAvailable)
@@ -128,10 +131,16 @@ pub fn parse_title_id(title_id: &String) -> String {
         .to_uppercase();
 }
 
-#[derive(Clone, Copy, PartialEq)]
-enum PlaformVariant {
+#[derive(Clone, Copy, PartialEq, Debug)]
+pub enum PlaformVariant {
     PS3,
     PS4
+}
+
+impl fmt::Display for PlaformVariant {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{:?}", self)
+    }
 }
 
 fn get_platform_variant(title_id: &str) -> Option<PlaformVariant> {
@@ -175,7 +184,7 @@ pub struct PackageInfo {
     pub url: String,
     pub size: u64,
     pub version: String,
-    pub sha1sum: String
+    pub sha1sum: String,
 }
 
 impl PackageInfo {
@@ -184,7 +193,7 @@ impl PackageInfo {
             url: String::new(),
             size: 0,
             version: String::new(),
-            sha1sum: String::new()
+            sha1sum: String::new(),
         }
     }
 

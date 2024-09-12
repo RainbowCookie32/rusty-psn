@@ -1,7 +1,7 @@
 use quick_xml::Reader;
 use quick_xml::events::Event;
 
-use super::{UpdateInfo, PackageInfo};
+use super::{PackageInfo, PlaformVariant, UpdateInfo};
 
 #[derive(Debug)]
 pub enum ParseError {
@@ -9,7 +9,7 @@ pub enum ParseError {
     XmlParsing(quick_xml::Error),
 }
 
-pub fn parse_response(response: String) -> Result<UpdateInfo, ParseError> {
+pub fn parse_response(response: String, platform_variant: PlaformVariant) -> Result<UpdateInfo, ParseError> {
     let mut reader = Reader::from_str(&response);
     reader.config_mut().trim_text(true);
 
@@ -17,7 +17,7 @@ pub fn parse_response(response: String) -> Result<UpdateInfo, ParseError> {
     let mut title_element = false;
     let mut event_buf = Vec::new();
 
-    let mut info = UpdateInfo::empty();
+    let mut info = UpdateInfo::empty(platform_variant);
     let mut err_encountered = false;
     let mut err_code_encountered = false;
 
