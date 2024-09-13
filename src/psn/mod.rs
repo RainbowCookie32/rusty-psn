@@ -1,4 +1,5 @@
 mod parser;
+mod manifest_parser;
 
 use core::str;
 use std::fmt;
@@ -82,45 +83,61 @@ impl UpdateInfo {
         let response_txt = response.text().await.map_err(UpdateError::Reqwest)?;
 
         if response_txt.is_empty() {
-            Err(UpdateError::NoUpdatesAvailable)
+            return Err(UpdateError::NoUpdatesAvailable)
         }
-        else if response_txt.contains("Not found") {
-            Err(UpdateError::InvalidSerial)
-        }
-        else {
-            match parser::parse_response(response_txt, platform_variant) {
-                Ok(mut info) => {
-                    if info.title_id.is_empty() || info.packages.is_empty() {
-                        Err(UpdateError::NoUpdatesAvailable)
-                    }
-                    else {
-                        // This abomination comes courtesy of BCUS98233.
-                        // For some ungodly reason, the title has a newline (/n), which of course causes issues
-                        // both when displaying the title and when trying to create a folder to put the files in.
-                        let titles = &info.titles;
-                        info.titles = titles
-                            .into_iter()
-                            .map(| title | title.replace("\n", " "))
-                            .collect()
-                        ;
 
-                        Ok(info)
-                    }
+        if response_txt.contains("Not found") {
+            return Err(UpdateError::InvalidSerial)
+        }
+
+        let mut info = UpdateInfo::empty(platform_variant);
+        match parser::parse_response(response_txt, &mut info) {
+            Ok(()) => {
+                if info.title_id.is_empty() || info.packages.is_empty() {
+                    return Err(UpdateError::NoUpdatesAvailable)
                 }
-                Err(e) => {
-                    match e {
-                        parser::ParseError::ErrorCode(reason) => {
-                            if reason == "NoSuchKey" {
-                                return Err(UpdateError::InvalidSerial);
-                            }
 
-                            return Err(UpdateError::UnhandledErrorResponse(reason));
-                        },
-                        parser::ParseError::XmlParsing(reason) => Err(UpdateError::XmlParsing(reason))
-                    }
+                // This abomination comes courtesy of BCUS98233.
+                // For some ungodly reason, the title has a newline (/n), which of course causes issues
+                // both when displaying the title and when trying to create a folder to put the files in.
+                let titles = &info.titles;
+                info.titles = titles
+                    .into_iter()
+                    .map(| title | title.replace("\n", " "))
+                    .collect()
+                ;
+            }
+            Err(e) => {
+                match e {
+                    parser::ParseError::ErrorCode(reason) => {
+                        if reason == "NoSuchKey" {
+                            return Err(UpdateError::InvalidSerial);
+                        }
+
+                        return Err(UpdateError::UnhandledErrorResponse(reason));
+                    },
+                    parser::ParseError::XmlParsing(reason) => return Err(UpdateError::XmlParsing(reason))
                 }
             }
         }
+
+        if platform_variant != PlaformVariant::PS4 {
+            return Ok(info)
+        }
+
+        let mut parent_manifest_packages = info.packages;
+        info.packages = Vec::new(); // previously fetched manifest packages are moved out of packages list and a new list of part packages will be filled-in instead
+
+        for package in parent_manifest_packages.drain(..) {
+            let manifest_response = client.get(&package.manifest_url).send().await.map_err(UpdateError::Reqwest)?;
+            let manifest_response_txt = manifest_response.text().await.map_err(UpdateError::Reqwest)?;
+            match manifest_parser::parse_manifest_response(manifest_response_txt, &package, &mut info) {
+                Ok(()) => {}
+                Err(_e) => { return Err(UpdateError::NoUpdatesAvailable); } // TODO: needs more granular error handling
+            }
+        }
+
+        Ok(info)
     }
 }
 
@@ -158,7 +175,7 @@ fn get_platform_variant(title_id: &str) -> Option<PlaformVariant> {
 fn choose_url(title_id: &str, platform_variant: PlaformVariant) -> Result<String, UpdateError> {
     match platform_variant {
         PlaformVariant::PS3 => {
-            return Ok(format!("https://a0.ww.np.dl.playstation.net/tpl/np/{0}/{0}-ver.xml", title_id))
+            Ok(format!("https://a0.ww.np.dl.playstation.net/tpl/np/{0}/{0}-ver.xml", title_id))
         },
         PlaformVariant::PS4 => {
             let key = match hex::decode("AD62E37F905E06BC19593142281C112CEC0E7EC3E97EFDCAEFCDBAAFA6378D84") {
@@ -174,7 +191,7 @@ fn choose_url(title_id: &str, platform_variant: PlaformVariant) -> Result<String
             hasher.update(msg.as_ref());
             let hash_bytes = hasher.finalize().into_bytes();
 
-            return Ok(format!("https://gs-sec.ww.np.dl.playstation.net/plo/np/{0}/{1:x}/{0}-ver.xml", title_id, hash_bytes))
+            Ok(format!("https://gs-sec.ww.np.dl.playstation.net/plo/np/{0}/{1:x}/{0}-ver.xml", title_id, hash_bytes))
         }
     }
 }
@@ -185,6 +202,9 @@ pub struct PackageInfo {
     pub size: u64,
     pub version: String,
     pub sha1sum: String,
+    pub hash_whole_file: bool,
+    pub manifest_url: String,
+    pub offset: u64,
 }
 
 impl PackageInfo {
@@ -194,6 +214,9 @@ impl PackageInfo {
             size: 0,
             version: String::new(),
             sha1sum: String::new(),
+            hash_whole_file: false,
+            manifest_url: String::new(),
+            offset: 0,
         }
     }
 
@@ -229,7 +252,7 @@ impl PackageInfo {
 
         tx.send(DownloadStatus::Verifying).await.unwrap();
 
-        if !crate::utils::hash_file(&mut pkg_file, &self.sha1sum).await? {
+        if !crate::utils::hash_file(&mut pkg_file, &self.sha1sum, self.hash_whole_file).await? {
             if let Err(e) = pkg_file.set_len(0).await {
                 error!("Failed to set file lenght to 0: {e}");
                 return Err(DownloadError::Tokio(e));
@@ -260,7 +283,7 @@ impl PackageInfo {
 
             tx.send(DownloadStatus::Verifying).await.unwrap();
                                             
-            if crate::utils::hash_file(&mut pkg_file, &self.sha1sum).await? {
+            if crate::utils::hash_file(&mut pkg_file, &self.sha1sum, self.hash_whole_file).await? {
                 info!("Hash for {serial} {} matched, wrapping up...", self.version);
                 tx.send(DownloadStatus::DownloadSuccess).await.unwrap();
 

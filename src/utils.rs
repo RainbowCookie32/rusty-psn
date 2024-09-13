@@ -70,7 +70,7 @@ pub async fn create_pkg_file(download_path: PathBuf, serial: &str, title: &str, 
         .map_err(DownloadError::Tokio)
 }
 
-pub async fn hash_file(file: &mut File, hash: &str) -> Result<bool, DownloadError> {
+pub async fn hash_file(file: &mut File, hash: &str, hash_whole_file: bool) -> Result<bool, DownloadError> {
     let mut buf = Vec::new();
     let mut hasher = Sha1::new();
 
@@ -84,7 +84,8 @@ pub async fn hash_file(file: &mut File, hash: &str) -> Result<bool, DownloadErro
         return Ok(false);
     }
     
-    // Last 0x20 bytes are the SHA1 hash.
-    hasher.update(&buf[0..buf.len() - 0x20]);
+    // Last 0x20 bytes are the SHA1 hash for PS3 updates. PS4 updates don't include hash suffix.
+    let suffix_size = if hash_whole_file { 0 } else { 0x20 };
+    hasher.update(&buf[0..buf.len() - suffix_size]);
     Ok(hasher.digest().to_string() == hash)
 }

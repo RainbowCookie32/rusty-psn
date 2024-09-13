@@ -1,7 +1,7 @@
 use quick_xml::Reader;
 use quick_xml::events::Event;
 
-use super::{PackageInfo, PlaformVariant, UpdateInfo};
+use super::{PackageInfo, UpdateInfo};
 
 #[derive(Debug)]
 pub enum ParseError {
@@ -9,7 +9,7 @@ pub enum ParseError {
     XmlParsing(quick_xml::Error),
 }
 
-pub fn parse_response(response: String, platform_variant: PlaformVariant) -> Result<UpdateInfo, ParseError> {
+pub fn parse_response(response: String, info: &mut UpdateInfo) -> Result<(), ParseError> {
     let mut reader = Reader::from_str(&response);
     reader.config_mut().trim_text(true);
 
@@ -17,7 +17,6 @@ pub fn parse_response(response: String, platform_variant: PlaformVariant) -> Res
     let mut title_element = false;
     let mut event_buf = Vec::new();
 
-    let mut info = UpdateInfo::empty(platform_variant);
     let mut err_encountered = false;
     let mut err_code_encountered = false;
 
@@ -74,6 +73,12 @@ pub fn parse_response(response: String, platform_variant: PlaformVariant) -> Res
                                     if let Some(last) = info.packages.last_mut() {
                                         let value = attribute.unescape_value().map_err(ParseError::XmlParsing)?;
                                         last.url = value.to_string();
+                                    }
+                                }
+                                b"manifest_url" => {
+                                    if let Some(last) = info.packages.last_mut() {
+                                        let value = attribute.unescape_value().map_err(ParseError::XmlParsing)?;
+                                        last.manifest_url = value.to_string();
                                     }
                                 }
                                 _ => {
@@ -169,5 +174,5 @@ pub fn parse_response(response: String, platform_variant: PlaformVariant) -> Res
         warn!("Finished parsing xml with non-zero depth {depth}");
     }
 
-    Ok(info)
+    Ok(())
 }
