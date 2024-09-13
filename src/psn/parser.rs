@@ -102,7 +102,7 @@ pub fn parse_response(response: String, info: &mut UpdateInfo) -> Result<(), Par
                         let name = e.name();
                         let name = String::from_utf8_lossy(name.as_ref());
                         
-                        if name.starts_with("TITLE") {
+                        if name.to_lowercase().starts_with("title") {
                             title_element = true;
                         }
                     }
