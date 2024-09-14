@@ -39,18 +39,17 @@ pub fn parse_manifest_response(response: String, parent_manifest_package: &Packa
     }
 
     for (idx, piece) in manifest.pieces.iter().enumerate() {
-        let mut part_package = PackageInfo::empty();
-        let version = if manifest.number_of_split_files > 1 {
-            format!("{0} - part {1} of {2}", parent_manifest_package.version, idx+1, manifest.number_of_split_files)
-        } else {
-            parent_manifest_package.version.to_owned()
+        let part_number = if manifest.number_of_split_files > 1 { Some(idx+1) } else { None };
+        let part_package = PackageInfo{
+            version: parent_manifest_package.version.to_owned(),
+            sha1sum: piece.hash_value.to_owned(),
+            url: piece.url.to_owned(),
+            size: piece.file_size, 
+            hash_whole_file: true,
+            offset: piece.file_offset,
+            manifest_url: String::new(),
+            part_number
         };
-        part_package.version = version;
-        part_package.sha1sum = piece.hash_value.to_owned();
-        part_package.url = piece.url.to_owned();
-        part_package.size = piece.file_size; 
-        part_package.hash_whole_file = true;
-        part_package.offset = piece.file_offset;
         info.packages.push(part_package);
     }
 

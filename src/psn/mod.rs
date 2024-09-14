@@ -205,6 +205,7 @@ pub struct PackageInfo {
     pub hash_whole_file: bool,
     pub manifest_url: String,
     pub offset: u64,
+    pub part_number: Option<usize>,
 }
 
 impl PackageInfo {
@@ -217,6 +218,14 @@ impl PackageInfo {
             hash_whole_file: false,
             manifest_url: String::new(),
             offset: 0,
+            part_number: None,
+        }
+    }
+
+    pub fn id(&self) -> String {
+        match self.part_number {
+            Some(part_idx) => format!("{0} - part {1}", self.version, part_idx),
+            None => self.version.to_owned()
         }
     }
 

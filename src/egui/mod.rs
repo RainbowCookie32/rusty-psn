@@ -16,8 +16,8 @@ use tokio::runtime::Runtime;
 use crate::psn::*;
 
 pub struct ActiveDownload {
-    id: String,
-    version: String,
+    title_id: String,
+    pkg_id: String,
 
     size: u64,
     progress: u64,
@@ -237,33 +237,33 @@ impl UpdatesApp {
 
                 match r {
                     Ok(_) => {
-                        info!("Download completed! ({} {})", &download.id, &download.version);
+                        info!("Download completed! ({} {})", &download.title_id, &download.pkg_id);
 
                         // Add this download to the happy list of successful downloads.
-                        toasts.push((format!("{} v{} downloaded successfully!", &download.id, &download.version), ToastLevel::Success));
-                        self.v.completed_downloads.push((download.id.clone(), download.version.clone()));
+                        toasts.push((format!("{} v{} downloaded successfully!", &download.title_id, &download.pkg_id), ToastLevel::Success));
+                        self.v.completed_downloads.push((download.title_id.clone(), download.pkg_id.clone()));
                     }
                     Err(e) => {
                         // Add this download to the sad list of failed downloads and show the error window.
-                        self.v.failed_downloads.push((download.id.clone(), download.version.clone()));
+                        self.v.failed_downloads.push((download.title_id.clone(), download.pkg_id.clone()));
 
                         match e {
                             DownloadError::HashMismatch(short_on_data) => {
-                                toasts.push((format!("Failed to download {} v{}: Hash mismatch.", download.id, download.version), ToastLevel::Error));
+                                toasts.push((format!("Failed to download {} v{}: Hash mismatch.", download.title_id, download.pkg_id), ToastLevel::Error));
 
                                 if *short_on_data {
                                     self.v.show_mismatch_warning_window = true;
                                 }
                             }
                             DownloadError::Tokio(_) => {
-                                toasts.push((format!("Failed to download {} v{}. Check the log for details.", download.id, download.version), ToastLevel::Error));
+                                toasts.push((format!("Failed to download {} v{}. Check the log for details.", download.title_id, download.pkg_id), ToastLevel::Error));
                             }
                             DownloadError::Reqwest(_) => {
-                                toasts.push((format!("Failed to download {} v{}. Check the log for details.", download.id, download.version), ToastLevel::Error));
+                                toasts.push((format!("Failed to download {} v{}. Check the log for details.", download.title_id, download.pkg_id), ToastLevel::Error));
                             }
                         }
 
-                        error!("Error received from pkg download ({} {}): {:?}", download.id, download.version, e);
+                        error!("Error received from pkg download ({} {}): {:?}", download.title_id, download.pkg_id, e);
                     }
                 }
             }
@@ -277,7 +277,7 @@ impl UpdatesApp {
     fn start_download(&self, serial: String, title: String, pkg: PackageInfo) -> ActiveDownload {
         let (tx, rx) = tokio::sync::mpsc::channel(10);
         let id = serial.clone();
-        let version = pkg.version.clone();
+        let pkg_id = pkg.id();
         let download_size = pkg.size;
         let download_path = self.settings.pkg_download_path.clone();
 
@@ -290,8 +290,8 @@ impl UpdatesApp {
         );
 
         ActiveDownload {
-            id,
-            version,
+            title_id: id,
+            pkg_id,
 
             size: download_size,
             progress: 0,
@@ -450,8 +450,8 @@ impl UpdatesApp {
     
                     for pkg in update.packages.iter() {
                         // Avoid duplicates by checking if there's already a download for this serial and version on the queue.
-                        if !self.v.download_queue.iter().any(| d | &d.id == title_id && d.version == pkg.version) {
-                            info!("Downloading update {} for serial {title_id} (group)", pkg.version);
+                        if !self.v.download_queue.iter().any(| d | &d.title_id == title_id && d.pkg_id == pkg.id()) {
+                            info!("Downloading update {} for serial {title_id} (group)", pkg.id());
                             new_downloads.push(self.start_download(title_id.to_string(), title.clone(), pkg.clone()));
                         }
                     }
@@ -489,7 +489,7 @@ impl UpdatesApp {
         let mut download = None;
 
         ui.group(| ui | {
-            ui.strong(format!("Package Version: {}", pkg.version));
+            ui.strong(format!("Package Version: {}", pkg.id()));
             ui.label(format!("Size: {}", ByteSize::b(pkg.size)));
             ui.label(format!("SHA-1 hashsum: {}", pkg.sha1sum));
     
@@ -498,7 +498,7 @@ impl UpdatesApp {
             ui.horizontal(| ui | {
                 let existing_download = self.v.download_queue
                     .iter()
-                    .find(| d | d.id == title_id && d.version == pkg.version)
+                    .find(| d | d.title_id == title_id && d.pkg_id == pkg.id())
                 ;
                 
                 if ui.add_enabled(existing_download.is_none(), egui::Button::new("Download file")).clicked() {
@@ -518,10 +518,10 @@ impl UpdatesApp {
                         _ => {}
                     }
                 }
-                else if self.v.completed_downloads.iter().any(| (id, version) | id == title_id && version == &pkg.version) {
+                else if self.v.completed_downloads.iter().any(| (id, pkg_id) | id == title_id && pkg_id == &pkg.id()) {
                     ui.label(egui::RichText::new("Completed").color(egui::Rgba::from_rgb(0.0, 1.0, 0.0)));
                 }
-                else if self.v.failed_downloads.iter().any(| (id, version) | id == title_id && version == &pkg.version) {
+                else if self.v.failed_downloads.iter().any(| (id, pkg_id) | id == title_id && pkg_id == &pkg.id()) {
                     ui.label(egui::RichText::new("Failed").color(egui::Rgba::from_rgb(1.0, 0.0, 0.0)));
                 }
             
