@@ -207,6 +207,9 @@ impl UpdatesApp {
                         UpdateError::XmlParsing(e) => {
                             toasts.push((format!("Error parsing response from Sony, try again later ({e})."), ToastLevel::Error));
                         }
+                        UpdateError::ManifestParsing(e) => {
+                            toasts.push((format!("Error parsing manifest response from Sony, try again later ({e})."), ToastLevel::Error));
+                        }
                     }
         
                     error!("Error received from updates query: {:?}", e);

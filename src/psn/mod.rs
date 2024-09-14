@@ -33,6 +33,7 @@ pub enum UpdateError {
     UnhandledErrorResponse(String),
     Reqwest(reqwest::Error),
     XmlParsing(quick_xml::Error),
+    ManifestParsing(serde_json::Error)
 }
 
 pub struct UpdateInfo {
@@ -129,7 +130,12 @@ impl UpdateInfo {
             let manifest_response_txt = manifest_response.text().await.map_err(UpdateError::Reqwest)?;
             match manifest_parser::parse_manifest_response(manifest_response_txt, &package, &mut info) {
                 Ok(()) => {}
-                Err(_e) => { return Err(UpdateError::NoUpdatesAvailable); } // TODO: needs more granular error handling
+                Err(e) => { 
+                    match e {
+                        manifest_parser::ParseError::NoPartsFound => return Err(UpdateError::NoUpdatesAvailable),
+                        manifest_parser::ParseError::JsonParsing(reason) => return Err(UpdateError::ManifestParsing(reason)),
+                    };
+                }
             }
         }
 

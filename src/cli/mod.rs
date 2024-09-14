@@ -65,6 +65,10 @@ pub fn start_app(args: Args) {
                             error!("Failed to deserialize response for {id}: {e}");
                             println!("{id}: Error parsing response from PSN, try again later ({e}).");
                         }
+                        UpdateError::ManifestParsing(e) => {
+                            error!("Failed to deserialize manifest response for {id}: {e}");
+                            println!("{id}: Error parsing manifest response from PSN, try again later ({e}).");
+                        }
                     }
                 }
             }
