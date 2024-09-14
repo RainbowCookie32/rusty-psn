@@ -495,7 +495,10 @@ impl UpdatesApp {
             ui.strong(format!("Package Version: {}", pkg.id()));
             ui.label(format!("Size: {}", ByteSize::b(pkg.size)));
             ui.label(format!("SHA-1 hashsum: {}", pkg.sha1sum));
-    
+            if pkg.offset > 0 {
+                ui.label(format!("Part offset: {}", pkg.offset));
+            }
+
             ui.separator();
     
             ui.horizontal(| ui | {
