@@ -364,7 +364,7 @@ impl UpdatesApp {
             ui.add_enabled_ui(!self.v.serial_query.is_empty() && self.v.search_promise.is_none(), | ui | {
                 if !input_submitted && !ui.button("Search for updates").clicked() { return; }
 
-                let already_searched = self.v.update_results.iter().any(|e| e.title_id == parse_title_id(&self.v.serial_query));
+                let already_searched = self.v.update_results.iter().any(|e| e.title_id == crate::psn::parse_title_id(&self.v.serial_query));
                 if already_searched { 
                     self.show_notifications("Provided title id results already shown", ToastLevel::Info);
                     return;
