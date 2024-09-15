@@ -65,6 +65,10 @@ pub fn start_app(args: Args) {
                             error!("Failed to deserialize response for {id}: {e}");
                             println!("{id}: Error parsing response from PSN, try again later ({e}).");
                         }
+                        UpdateError::ManifestParsing(e) => {
+                            error!("Failed to deserialize manifest response for {id}: {e}");
+                            println!("{id}: Error parsing manifest response from PSN, try again later ({e}).");
+                        }
                     }
                 }
             }
@@ -97,10 +101,10 @@ pub fn start_app(args: Args) {
                 ByteSize::b(total)
             };
     
-            println!("{} - {} - {} update(s) ({})", update.title_id, &title, update.packages.len(), total_size);
+            println!("[{}] {} - {} - {} update(s) ({})", update.platform_variant, update.title_id, &title, update.packages.len(), total_size);
 
             for (i, pkg) in update.packages.iter().enumerate() {
-                println!("  {i}. {} ({})", pkg.version, ByteSize::b(pkg.size));
+                println!("  {i}. {} ({})", pkg.id(), ByteSize::b(pkg.size));
             }
         }
 
@@ -132,7 +136,7 @@ pub fn start_app(args: Args) {
 
                 if updates_to_fetch.is_empty() {
                     for (i, pkg) in update.packages.iter().enumerate() {
-                        updates.push_str(&pkg.version);
+                        updates.push_str(&pkg.id());
     
                         if i < update.packages.len() - 1 {
                             updates.push_str(", ");
@@ -141,7 +145,7 @@ pub fn start_app(args: Args) {
                 }
                 else {
                     for (i, update_idx) in updates_to_fetch.iter().enumerate() {
-                        updates.push_str(&update.packages[*update_idx].version.to_string());
+                        updates.push_str(&update.packages[*update_idx].id().to_string());
     
                         if i < updates_to_fetch.len() - 1 {
                             updates.push_str(", ");
@@ -187,7 +191,7 @@ pub fn start_app(args: Args) {
                         if let Err(e) = result {
                             match e {
                                 DownloadError::HashMismatch(short_on_data) => {
-                                    error!("Download of {} {} failed: hash mismatch. (short on data: {})", update.title_id, pkg.version, short_on_data);
+                                    error!("Download of {} {} failed: hash mismatch. (short on data: {})", update.title_id, pkg.id(), short_on_data);
                                     println!("Error downloading update: hash mismatch on downloaded file.");
 
                                     if *short_on_data {
@@ -195,11 +199,11 @@ pub fn start_app(args: Args) {
                                     }
                                 }
                                 DownloadError::Tokio(e) => {
-                                    error!("Download of {} {} failed: {e}", update.title_id, pkg.version);
+                                    error!("Download of {} {} failed: {e}", update.title_id, pkg.id());
                                     println!("Error downloading update: {e}.")
                                 }
                                 DownloadError::Reqwest(e) => {
-                                    error!("Download of {} {} failed: {e}", update.title_id, pkg.version);
+                                    error!("Download of {} {} failed: {e}", update.title_id, pkg.id());
                                     println!("Error downloading update: {e}.")
                                 }
                             }
@@ -215,14 +219,14 @@ pub fn start_app(args: Args) {
 
                                     if !silent_mode {
                                         crossterm::execute!(stdout, cursor::RestorePosition, terminal::Clear(terminal::ClearType::CurrentLine), cursor::SavePosition).unwrap();
-                                        print!("        {} - {title} | {} / {}", pkg.version, ByteSize::b(downloaded), ByteSize::b(pkg.size));
+                                        print!("        {} - {title} | {} / {}", pkg.id(), ByteSize::b(downloaded), ByteSize::b(pkg.size));
                                         stdout.flush().unwrap();
                                     }
                                 }
                                 DownloadStatus::Verifying => {
                                     if !silent_mode {
                                         crossterm::execute!(stdout, cursor::RestorePosition, terminal::Clear(terminal::ClearType::CurrentLine), cursor::SavePosition).unwrap();
-                                        print!("        {} - {title} | Verifying checksum... ", pkg.version);
+                                        print!("        {} - {title} | Verifying checksum... ", pkg.id());
                                         stdout.flush().unwrap();
                                     }
                                     
@@ -230,14 +234,14 @@ pub fn start_app(args: Args) {
                                 DownloadStatus::DownloadSuccess => {
                                     if !silent_mode {
                                         crossterm::execute!(stdout, cursor::RestorePosition, terminal::Clear(terminal::ClearType::CurrentLine), cursor::SavePosition).unwrap();
-                                        println!("        {} - {title} | Download completed successfully. ", pkg.version);
+                                        println!("        {} - {title} | Download completed successfully. ", pkg.id());
                                         stdout.flush().unwrap();
                                     }
                                 }
                                 DownloadStatus::DownloadFailure => {
                                     if !silent_mode {
                                         crossterm::execute!(stdout, cursor::RestorePosition, terminal::Clear(terminal::ClearType::CurrentLine), cursor::SavePosition).unwrap();
-                                        println!("        {} - {title} | Download failed. ", pkg.version);
+                                        println!("        {} - {title} | Download failed. ", pkg.id());
                                         stdout.flush().unwrap();
                                     }
                                 }
