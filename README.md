@@ -38,7 +38,7 @@ docker run --rm -v ${PWD}/pkgs:/rusty-psn/pkgs rusty-psn
 
 - GUI Build:
 
-![GUI Screenshot](https://user-images.githubusercontent.com/16805474/155437468-ee810763-412b-4e48-8ef7-03e5015a76c0.png)
+![GUI Screenshot](https://github.com/user-attachments/assets/31049d75-ffbb-4d27-9bfb-d33624bc83cb)
 
 - CLI Build:
 
