@@ -1,5 +1,5 @@
 # rusty-psn
-A simple tool to grab updates for PS3 games, directly from Sony's servers using their updates API. Available for both Linux and Windows, in both GUI and CLI alternatives.
+A simple tool to grab updates for PS3 & PS4 games, directly from Sony's servers using their updates API. Available for both Linux and Windows, in both GUI and CLI alternatives.
 
 ## Usage
 Go to the [latest release](https://github.com/RainbowCookie32/rusty-psn/releases/latest) page and download the file you'll use from the Assets section:

@@ -178,7 +178,7 @@ impl PackageInfo {
 
     pub fn id(&self) -> String {
         match self.part_number {
-            Some(part_idx) => format!("{0} - part {1}", self.version, part_idx),
+            Some(part_idx) => format!("{0} - Part {1}", self.version, part_idx),
             None => self.version.to_owned()
         }
     }
