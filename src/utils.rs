@@ -1,3 +1,4 @@
+use std::convert::TryInto;
 use std::path::PathBuf;
 
 use sha1_smol::Sha1;
@@ -5,8 +6,7 @@ use sha1_smol::Sha1;
 use tokio::fs;
 use tokio::fs::{File, OpenOptions};
 
-use tokio::io;
-use tokio::io::{AsyncReadExt, AsyncSeekExt, SeekFrom};
+use tokio::io::{self, AsyncBufReadExt, BufReader, AsyncSeekExt, SeekFrom};
 
 use crate::psn::DownloadError;
 
@@ -70,22 +70,57 @@ pub async fn create_pkg_file(download_path: PathBuf, serial: &str, title: &str, 
         .map_err(DownloadError::Tokio)
 }
 
+const CHUNK_SIZE: usize = 1024 * 1024 * 128;
 pub async fn hash_file(file: &mut File, hash: &str, hash_whole_file: bool) -> Result<bool, DownloadError> {
-    let mut buf = Vec::new();
     let mut hasher = Sha1::new();
 
-    // Write operations during the download move the internal seek pointer.
-    // Resetting it to 0 makes .read_to_end actually read the whole thing.
-    file.seek(SeekFrom::Start(0)).await.map_err(DownloadError::Tokio)?;
-
-    // If the amount of data read is below the length of the embedded sha1-hash,
-    // don't bother hashing the contents. Download's borked.
-    if file.read_to_end(&mut buf).await.map_err(DownloadError::Tokio)? < 0x20 {
-        return Ok(false);
-    }
-    
     // Last 0x20 bytes are the SHA1 hash for PS3 updates. PS4 updates don't include hash suffix.
     let suffix_size = if hash_whole_file { 0 } else { 0x20 };
-    hasher.update(&buf[0..buf.len() - suffix_size]);
+
+    // If the file size is below the length of the embedded sha1-hash suffix,
+    // don't bother hashing the contents. Download's borked.
+    let file_length = file.metadata().await.map_err(DownloadError::Tokio)?.len();
+    if file_length <= suffix_size {
+        return Ok(false);
+    }
+
+    let file_length_without_suffix: usize = (file_length - suffix_size)
+        .try_into()
+        .map_err(|_| DownloadError::HashMismatch(true))?;
+
+    // Write operations during the download move the internal seek pointer.
+    // Resetting it to 0 makes reader actually read the whole thing.
+    file.seek(SeekFrom::Start(0)).await.map_err(DownloadError::Tokio)?;
+
+    let mut reader = BufReader::with_capacity(CHUNK_SIZE, file);
+    let mut processed_length = 0;
+    loop {
+        let chunk_buffer = reader.fill_buf().await.map_err(DownloadError::Tokio)?;
+        let chunk_length = chunk_buffer.len();
+        if chunk_length == 0 {
+            break;
+        }
+        
+        let previously_processed_length: usize = processed_length;
+        processed_length = processed_length + chunk_length;
+        // While iterating through the file a chunk being processed may already include some hash suffix bits which should not be hashed.
+        // In such case file chunk is stripped of those extra suffix bits.
+        let suffix_part_in_chunk = processed_length > file_length_without_suffix;
+        let hashable_buffer = if suffix_part_in_chunk {
+            let last_before_suffix = (file_length_without_suffix - previously_processed_length)
+                .try_into()
+                .map_err(|_| DownloadError::HashMismatch(true))?;
+            &chunk_buffer[..last_before_suffix]
+        } else {
+            &chunk_buffer
+        };
+
+        hasher.update(&hashable_buffer);
+        reader.consume(chunk_length);
+        if suffix_part_in_chunk {
+            break; // Since unhashable suffix has already been encountered, either in part or in full, there's no need to read rest of the file anymore.
+        }
+    }
+
     Ok(hasher.digest().to_string() == hash)
 }
