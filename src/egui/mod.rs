@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 use std::time::Duration;
 
-use eframe::egui;
+use eframe::egui::{self, Button};
 use egui_notify::{Toast, Toasts, ToastLevel};
 
 use bytesize::ByteSize;
@@ -459,6 +459,23 @@ impl UpdatesApp {
                         }
                     }
                 }
+
+                if platform_variant != utils::PlaformVariant::PS4 { return; }
+
+                let is_multipart = update.packages.len() > 1;
+                let all_pkgs_completed = update.packages.iter().all(|pkg| {
+                    self.v.completed_downloads.iter().find(|(id, pkg_id)| {
+                        title_id == id && *pkg_id == pkg.id()
+                    }).is_some()
+                });
+                let is_mergable = is_multipart && all_pkgs_completed;
+                let hover_text = if is_multipart {
+                    "All parts need to be completed for merge to be available"
+                } else {
+                    "This PS4 update is not a multipart update"
+                };
+                ui.add_enabled(is_mergable, Button::new("Merge parts"))
+                    .on_disabled_hover_text(hover_text);
             })
             .body(| ui | {
                 ui.add_space(5.0);

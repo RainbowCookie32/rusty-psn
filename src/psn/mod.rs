@@ -1,4 +1,4 @@
-mod utils;
+pub mod utils;
 mod parser;
 mod manifest_parser;
 
