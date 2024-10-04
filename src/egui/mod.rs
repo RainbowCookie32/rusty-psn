@@ -27,6 +27,15 @@ pub struct ActiveDownload {
     progress_rx: mpsc::Receiver<DownloadStatus>
 }
 
+pub struct ActiveMerge {
+    title_id: String,
+
+    progress: u64,
+
+    promise: Promise<Result<(), DownloadError>>,
+    progress_rx: mpsc::Receiver<DownloadStatus>
+}
+
 #[derive(Clone, Deserialize, Serialize)]
 struct AppSettings {
     pkg_download_path: PathBuf,
@@ -426,14 +435,7 @@ impl UpdatesApp {
 
         egui::collapsing_header::CollapsingState::load_with_default_open(ctx, id, false)
             .show_header(ui, | ui | {
-                let title = {
-                    if let Some(title) = update.titles.get(0) {
-                        title.clone()
-                    }
-                    else {
-                        String::new()
-                    }
-                };
+                let title =  update.title();
 
                 let collapsing_title = {
                     if !title.is_empty() {
@@ -474,21 +476,14 @@ impl UpdatesApp {
                 } else {
                     "This PS4 update is not a multipart update"
                 };
-                ui.add_enabled(is_mergable, Button::new("Merge parts"))
+                let merge_btn = ui.add_enabled(is_mergable, Button::new("Merge parts"))
                     .on_disabled_hover_text(hover_text);
             })
             .body(| ui | {
                 ui.add_space(5.0);
 
                 for pkg in update.packages.iter() {
-                    let title = {
-                        if let Some(title) = update.titles.get(0) {
-                            title.clone()
-                        }
-                        else {
-                            String::new()
-                        }
-                    };
+                    let title = update.title();
 
                     if let Some(download) = self.draw_entry_pkg(ui, pkg, title_id, title) {
                         new_downloads.push(download);

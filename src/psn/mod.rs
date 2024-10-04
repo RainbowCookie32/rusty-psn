@@ -57,6 +57,15 @@ impl UpdateInfo {
         }
     }
 
+    pub fn title(&self) -> String {
+        if let Some(title) = self.titles.get(0) {
+            title.clone()
+        }
+        else {
+            String::new()
+        }
+    }
+
     pub async fn get_info(title_id: String) -> Result<UpdateInfo, UpdateError> {
         let title_id = parse_title_id(&title_id);
         let platform_variant = match get_platform_variant(&title_id) {
