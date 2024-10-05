@@ -21,17 +21,25 @@ fn sanitize_title(title: &str) -> String {
    title.replace(| c | INVALID_CHARS.contains(&c), "_")
 }
 
-pub async fn create_pkg_file(download_path: PathBuf, serial: &str, title: &str, pkg_name: &str) -> Result<File, DownloadError> {
-    let sanitized_title = sanitize_title(title);
-    let mut target_path = download_path;
+fn create_old_pkg_path(download_path: &PathBuf, serial: &str) -> PathBuf {
+    let mut target_path = download_path.clone();
     target_path.push(serial);
+    target_path
+}
+
+pub fn create_new_pkg_path(download_path: &PathBuf, serial: &str, title: &str) -> PathBuf {
+    let mut target_path = download_path.clone();
+    let sanitized_title = sanitize_title(title);
+    target_path.push(format!("{} - {}", serial, sanitized_title));
+    target_path
+}
+
+pub async fn create_pkg_file(download_path: PathBuf, serial: &str, title: &str, pkg_name: &str) -> Result<File, DownloadError> {
+    let mut target_path = create_new_pkg_path(&download_path, serial, &title);
 
     // Check for the old path format.
-    if target_path.exists() {
-        let old_path = target_path.clone();
-        target_path.pop();
-        target_path.push(format!("{} - {}", serial, sanitized_title));
-
+    let old_path = create_old_pkg_path(&download_path, serial);
+    if old_path.exists() {
         info!("Found a folder with the old name format, trying to rename to current one.");
 
         if let Err(e) = fs::rename(&old_path, &target_path).await {
@@ -39,10 +47,7 @@ pub async fn create_pkg_file(download_path: PathBuf, serial: &str, title: &str, 
         }
     }
     
-    target_path.pop();
-    target_path.push(format!("{} - {}", serial, sanitized_title));
     target_path.push(pkg_name);
-
     info!("Creating file for pkg at path {:?}", target_path);
 
     if let Some(parent) = target_path.parent() {
