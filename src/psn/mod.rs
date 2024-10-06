@@ -2,11 +2,14 @@ pub mod utils;
 mod parser;
 mod manifest_parser;
 
-use std::path::PathBuf;
+use std::{path::PathBuf, str::FromStr};
 
+use reqwest::Url;
 use tokio::io::AsyncWriteExt;
 use tokio::sync::mpsc::Sender;
-use utils::{get_update_info_url, get_platform_variant, PlaformVariant};
+use utils::{copy_pkg_file, get_platform_variant, get_update_info_url, PlaformVariant};
+
+use crate::utils::create_new_pkg_path;
 
 #[derive(Debug)]
 pub enum DownloadStatus {
@@ -15,6 +18,21 @@ pub enum DownloadStatus {
     Verifying,
     DownloadSuccess,
     DownloadFailure
+}
+
+#[derive(Debug)]
+pub enum MergeStatus {
+    Progress(u64),
+
+    MergeSuccess,
+    MergeFailure
+}
+
+#[derive(Debug)]
+pub enum MergeError {
+    FilepathMismatch(String),
+    FileMergeFailure,
+    PackagesUnmergable(String),
 }
 
 #[derive(Debug)]
@@ -36,6 +54,7 @@ pub enum UpdateError {
     ManifestParsing(serde_json::Error)
 }
 
+#[derive(Clone)]
 pub struct UpdateInfo {
     pub title_id: String,
     pub tag_name: String,
@@ -149,6 +168,49 @@ impl UpdateInfo {
         }
 
         Ok(info)
+    }
+
+    pub async fn merge_parts(&self, tx: Sender<MergeStatus>, download_path: &PathBuf) -> Result<(), MergeError> {
+        if !self.packages.iter().all(|pkg| pkg.part_number.is_some()) {
+            return Err(MergeError::PackagesUnmergable(String::from("some packages for the update are not a partial packages")));
+        }
+
+        let mut packages_sorted_by_part_number = self.packages.clone();
+        packages_sorted_by_part_number.sort_by_key(|pkg| pkg.part_number.unwrap());
+        let package_download_path = create_new_pkg_path(&download_path, &self.title_id, &self.title());
+
+        info!("Starting merge for {}", self.title());
+
+        for package in self.packages.iter() {
+            let file_name = match package.file_name() {
+                Some(name) => name,
+                None => return Err(MergeError::FilepathMismatch(String::from("could not deduce filename from a package url")))
+            };
+
+            let expected_end_of_file_name = format!("_{}.pkg", package.part_number.unwrap() - 1);
+            if !file_name.ends_with(&expected_end_of_file_name) {
+                return Err(MergeError::FilepathMismatch(String::from("package name does not end with expected index and extension")))
+            }
+
+            let merged_file_name = file_name.replace(&expected_end_of_file_name, ".pkg");
+            let mut merged_path = package_download_path.clone();
+            merged_path.push(&merged_file_name);
+            let mut package_path = package_download_path.clone();
+            package_path.push(&file_name);
+            match copy_pkg_file( &package_path, &merged_path, package.offset).await {
+                Ok(read_length) => {
+                    tx.send(MergeStatus::Progress(read_length)).await.unwrap();
+                    info!("merged {} bytes from {} to {}", read_length, file_name, merged_file_name);
+                },
+                Err(err) => {
+                    error!("could not merge files: {}", err.to_string());
+                    return Err(MergeError::FileMergeFailure)
+                },
+            };
+        }
+
+        tx.send(MergeStatus::MergeSuccess).await.unwrap();
+        Ok(())
     }
 }
 
@@ -274,6 +336,20 @@ impl PackageInfo {
 
             Ok(())
         }
+    }
+
+    pub fn file_name(&self) -> Option<String> {
+        let pkg_url = match Url::from_str(&self.url) {
+            Ok(url) => url,
+            Err(_) => return None
+        };
+
+        let file_name = pkg_url
+            .path_segments()
+            .and_then(|s| s.last())
+            .and_then(|n| if n.is_empty() { None } else { Some(n.to_string()) });
+
+        file_name
     }
 }
 

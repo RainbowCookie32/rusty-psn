@@ -32,8 +32,8 @@ pub struct ActiveMerge {
 
     progress: u64,
 
-    promise: Promise<Result<(), DownloadError>>,
-    progress_rx: mpsc::Receiver<DownloadStatus>
+    promise: Promise<Result<(), MergeError>>,
+    progress_rx: mpsc::Receiver<MergeStatus>
 }
 
 #[derive(Clone, Deserialize, Serialize)]
@@ -73,6 +73,11 @@ struct VolatileData {
     failed_downloads: Vec<(String, String)>,
     completed_downloads: Vec<(String, String)>,
 
+    merge_queue: Vec<ActiveMerge>,
+    failed_merges: Vec<(String, String)>,
+    completed_merges: Vec<(String, String)>,
+
+
     search_promise: Option<Promise<Result<UpdateInfo, UpdateError>>>
 }
 
@@ -108,6 +113,10 @@ impl Default for VolatileData {
             download_queue: Vec::new(),
             failed_downloads: Vec::new(),
             completed_downloads: Vec::new(),
+
+            merge_queue: Vec::new(),
+            failed_merges: Vec::new(),
+            completed_merges: Vec::new(),
 
             search_promise: None
         }
@@ -314,6 +323,29 @@ impl UpdatesApp {
         }
     }
 
+    fn start_merge_parts(&self, update_info: UpdateInfo) -> ActiveMerge {
+        let (tx, rx) = tokio::sync::mpsc::channel(10);
+        let download_path = self.settings.pkg_download_path.clone();
+        let title_id = update_info.title_id.clone();
+
+        let _guard = self.v.rt.enter();
+
+        let merge_promise = Promise::spawn_async(
+            async move {
+                update_info.merge_parts(tx, &download_path).await
+            }
+        );
+
+        ActiveMerge {
+            title_id,
+
+            progress: 0,
+
+            promise: merge_promise,
+            progress_rx: rx
+        }
+    }
+
     fn show_notifications<S: Into<String>>(&mut self, msg: S, level: ToastLevel) {
         let msg = msg.into();
 
@@ -406,22 +438,14 @@ impl UpdatesApp {
     }
 
     fn draw_results_list(&mut self, ctx: &egui::Context, ui: &mut egui::Ui) {
-        let mut new_downloads = Vec::new();
-
         egui::ScrollArea::vertical().auto_shrink([false; 2]).show(ui, | ui | {
-            for update in self.v.update_results.iter() {
-                new_downloads.append(&mut self.draw_result_entry(ctx, ui, update));
+            for update in self.v.update_results.clone().iter() {
+                self.draw_result_entry(ctx, ui, update);
             }
         });
-
-        for dl in new_downloads {
-            self.v.download_queue.push(dl);
-        }
     }
 
-    fn draw_result_entry(&self, ctx: &egui::Context, ui: &mut egui::Ui, update: &UpdateInfo) -> Vec<ActiveDownload> {
-        let mut new_downloads = Vec::new();
-
+    fn draw_result_entry(&mut self, ctx: &egui::Context, ui: &mut egui::Ui, update: &UpdateInfo) {
         let total_updates_size = update.packages.iter()
             .map(| pkg | pkg.size)
             .sum::<u64>()
@@ -457,7 +481,7 @@ impl UpdatesApp {
                         // Avoid duplicates by checking if there's already a download for this serial and version on the queue.
                         if !self.v.download_queue.iter().any(| d | &d.title_id == title_id && d.pkg_id == pkg.id()) {
                             info!("Downloading update {} for serial {title_id} (group)", pkg.id());
-                            new_downloads.push(self.start_download(title_id.to_string(), title.clone(), pkg.clone()));
+                            self.add_download(self.start_download(title_id.to_string(), title.clone(), pkg.clone()));
                         }
                     }
                 }
@@ -478,16 +502,16 @@ impl UpdatesApp {
                 };
                 let merge_btn = ui.add_enabled(is_mergable, Button::new("Merge parts"))
                     .on_disabled_hover_text(hover_text);
+                if merge_btn.clicked() {
+                    self.v.merge_queue.push(self.start_merge_parts(update.clone()));
+                }
             })
             .body(| ui | {
                 ui.add_space(5.0);
 
                 for pkg in update.packages.iter() {
                     let title = update.title();
-
-                    if let Some(download) = self.draw_entry_pkg(ui, pkg, title_id, title) {
-                        new_downloads.push(download);
-                    }
+                    self.draw_entry_pkg(ui, pkg, title_id, title);
 
                     ui.add_space(5.0);
                 }
@@ -496,13 +520,9 @@ impl UpdatesApp {
 
         ui.separator();
         ui.add_space(5.0);
-
-        new_downloads
     }
 
-    fn draw_entry_pkg(&self, ui: &mut egui::Ui, pkg: &PackageInfo, title_id: &str, title: String) -> Option<ActiveDownload> {
-        let mut download = None;
-
+    fn draw_entry_pkg(&mut self, ui: &mut egui::Ui, pkg: &PackageInfo, title_id: &str, title: String) {
         ui.group(| ui | {
             ui.strong(format!("Package Version: {}", pkg.id()));
             ui.label(format!("Size: {}", ByteSize::b(pkg.size)));
@@ -519,11 +539,7 @@ impl UpdatesApp {
                     .find(| d | d.title_id == title_id && d.pkg_id == pkg.id())
                 ;
                 
-                if ui.add_enabled(existing_download.is_none(), egui::Button::new("Download file")).clicked() {
-                    info!("Downloading update {} for serial {} (individual)", pkg.version, title_id);
-                    download = Some(self.start_download(title_id.to_string(), title, pkg.clone()));
-                }
-                
+                let download_btn = ui.add_enabled(existing_download.is_none(), egui::Button::new("Download file"));
                 if let Some(download) = existing_download {
                     match download.last_received_status {
                         DownloadStatus::Progress(_) => {
@@ -542,13 +558,16 @@ impl UpdatesApp {
                 else if self.v.failed_downloads.iter().any(| (id, pkg_id) | id == title_id && pkg_id == &pkg.id()) {
                     ui.label(egui::RichText::new("Failed").color(egui::Rgba::from_rgb(1.0, 0.0, 0.0)));
                 }
-            
+
                 let remaining_space = ui.available_size_before_wrap();
                 ui.add_space(remaining_space.x);
+
+                if download_btn.clicked() {
+                    info!("Downloading update {} for serial {} (individual)", pkg.version, title_id);
+                    self.add_download(self.start_download(title_id.to_string(), title, pkg.clone()));
+                }
             });
         });
-
-        download
     }
 
     fn draw_settings_window(&mut self, ctx: &egui::Context) {
@@ -639,5 +658,9 @@ impl UpdatesApp {
                 }
             });
         });
+    }
+
+    fn add_download(&mut self, download: ActiveDownload) {
+        self.v.download_queue.push(download);
     }
 }

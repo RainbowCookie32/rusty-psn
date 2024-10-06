@@ -1,10 +1,11 @@
 use crate::psn::UpdateError;
 
 use core::str;
-use std::fmt;
+use std::{fmt, io::{Error, SeekFrom}, path::PathBuf};
 
 use hmac::{Hmac, Mac};
 use sha2::Sha256;
+use tokio::{fs::OpenOptions, io::{copy_buf, AsyncSeekExt, BufReader, BufWriter}};
 
 type HmacSha256 = Hmac<Sha256>;
 
@@ -54,4 +55,31 @@ pub fn get_update_info_url(title_id: &str, platform_variant: PlaformVariant) -> 
             Ok(format!("https://gs-sec.ww.np.dl.playstation.net/plo/np/{0}/{1:x}/{0}-ver.xml", title_id, hash_bytes))
         }
     }
+}
+
+const MERGE_CHUNK_SIZE: usize = 1024 * 1024 * 128;
+pub async fn copy_pkg_file(src_path: &PathBuf, target_path: &PathBuf, offset: u64) -> Result<u64, Error> {
+    let src_file = OpenOptions::default()
+        .create(false)
+        .read(true)
+        .write(false)
+        .open(src_path)
+        .await?;
+
+    let mut target_file = OpenOptions::default()
+        .create(true)
+        .read(false)
+        .write(true)
+        .open(target_path)
+        .await?;
+
+
+    if offset > 0 {
+        target_file.seek(SeekFrom::Start(offset)).await?;
+    }
+
+    let mut writer = BufWriter::with_capacity(MERGE_CHUNK_SIZE, target_file);
+    let mut reader = BufReader::with_capacity(MERGE_CHUNK_SIZE, src_file);
+    let read_bytes = copy_buf(&mut reader, &mut writer).await?;
+    Ok(read_bytes)
 }
