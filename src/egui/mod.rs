@@ -31,6 +31,7 @@ pub struct ActiveMerge {
     title_id: String,
 
     progress: u64,
+    last_received_status: MergeStatus,
 
     promise: Promise<Result<(), MergeError>>,
     progress_rx: mpsc::Receiver<MergeStatus>
@@ -74,8 +75,8 @@ struct VolatileData {
     completed_downloads: Vec<(String, String)>,
 
     merge_queue: Vec<ActiveMerge>,
-    failed_merges: Vec<(String, String)>,
-    completed_merges: Vec<(String, String)>,
+    failed_merges: Vec<String>,
+    completed_merges: Vec<String>,
 
 
     search_promise: Option<Promise<Result<UpdateInfo, UpdateError>>>
@@ -156,6 +157,7 @@ impl eframe::App for UpdatesApp {
         self.handle_search_promise(&mut toasts);
         // Check in on active downloads.
         self.handle_download_promises(&mut toasts);
+        self.handle_merge_promises(&mut toasts);
 
         for (msg, level) in toasts {
             self.show_notifications(msg, level);
@@ -295,6 +297,46 @@ impl UpdatesApp {
         }
     }
 
+    fn handle_merge_promises(&mut self, toasts: &mut Vec<(String, ToastLevel)>) {
+        for i in 0..self.v.merge_queue.len() {
+            let merge = &mut self.v.merge_queue[i];
+            if let Ok(status) = merge.progress_rx.try_recv() {
+                if let MergeStatus::Progress(progress) = status {
+                    merge.progress += progress;
+                }
+
+                merge.last_received_status = status;
+            }
+
+            let result = match merge.promise.ready() {
+                Some(res) => res,
+                None => continue
+            };
+
+            match result {
+                Ok(_) => {
+                    info!("Merge completed for {}", &merge.title_id);
+
+                    toasts.push((format!("{} merged successfully!", &merge.title_id), ToastLevel::Success));
+                    self.v.completed_merges.push(merge.title_id.clone());
+                }
+                Err(e) => {
+                    self.v.failed_merges.push(merge.title_id.clone());
+
+                    match e {
+                        MergeError::FilepathMismatch(_) | MergeError::PackagesUnmergable(_) | MergeError::FileMergeFailure => {
+                            toasts.push((format!("Failed to merge {}. Check the log for details.", merge.title_id), ToastLevel::Error));
+                        }
+                    }
+
+                    error!("Could not merge files for {}, reason: {:?}", merge.title_id, e);
+                }
+            }
+
+            self.v.merge_queue.remove(i);
+        }
+    }
+
     fn start_download(&self, serial: String, title: String, pkg: PackageInfo) -> ActiveDownload {
         let (tx, rx) = tokio::sync::mpsc::channel(10);
         let id = serial.clone();
@@ -340,6 +382,7 @@ impl UpdatesApp {
             title_id,
 
             progress: 0,
+            last_received_status: MergeStatus::Progress(0),
 
             promise: merge_promise,
             progress_rx: rx
@@ -510,8 +553,7 @@ impl UpdatesApp {
                 ui.add_space(5.0);
 
                 for pkg in update.packages.iter() {
-                    let title = update.title();
-                    self.draw_entry_pkg(ui, pkg, title_id, title);
+                    self.draw_entry_pkg(ui, pkg, title_id, update.title());
 
                     ui.add_space(5.0);
                 }
