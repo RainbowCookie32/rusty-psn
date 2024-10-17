@@ -22,7 +22,7 @@ pub enum DownloadStatus {
 
 #[derive(Debug)]
 pub enum MergeStatus {
-    Progress(u64),
+    PartProgress(usize),
 
     MergeSuccess,
     MergeFailure
@@ -187,7 +187,8 @@ impl UpdateInfo {
                 None => return Err(MergeError::FilepathMismatch(String::from("could not deduce filename from a package url")))
             };
 
-            let expected_end_of_file_name = format!("_{}.pkg", package.part_number.unwrap() - 1);
+            let part_number = package.part_number.unwrap();
+            let expected_end_of_file_name = format!("_{}.pkg", part_number - 1);
             if !file_name.ends_with(&expected_end_of_file_name) {
                 return Err(MergeError::FilepathMismatch(String::from("package name does not end with expected index and extension")))
             }
@@ -199,7 +200,7 @@ impl UpdateInfo {
             package_path.push(&file_name);
             match copy_pkg_file( &package_path, &merged_path, package.offset).await {
                 Ok(read_length) => {
-                    tx.send(MergeStatus::Progress(read_length)).await.unwrap();
+                    tx.send(MergeStatus::PartProgress(part_number)).await.unwrap();
                     info!("merged {} bytes from {} to {}", read_length, file_name, merged_file_name);
                 },
                 Err(err) => {

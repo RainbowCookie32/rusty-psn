@@ -30,7 +30,7 @@ pub struct ActiveDownload {
 pub struct ActiveMerge {
     title_id: String,
 
-    progress: u64,
+    part_progress: usize,
     last_received_status: MergeStatus,
 
     promise: Promise<Result<(), MergeError>>,
@@ -301,8 +301,8 @@ impl UpdatesApp {
         for i in 0..self.v.merge_queue.len() {
             let merge = &mut self.v.merge_queue[i];
             if let Ok(status) = merge.progress_rx.try_recv() {
-                if let MergeStatus::Progress(progress) = status {
-                    merge.progress += progress;
+                if let MergeStatus::PartProgress(progress) = status {
+                    merge.part_progress = progress;
                 }
 
                 merge.last_received_status = status;
@@ -381,8 +381,8 @@ impl UpdatesApp {
         ActiveMerge {
             title_id,
 
-            progress: 0,
-            last_received_status: MergeStatus::Progress(0),
+            part_progress: 0,
+            last_received_status: MergeStatus::PartProgress(0),
 
             promise: merge_promise,
             progress_rx: rx
@@ -556,6 +556,20 @@ impl UpdatesApp {
                     self.draw_entry_pkg(ui, pkg, title_id, update.title());
 
                     ui.add_space(5.0);
+                }
+
+                let existing_merge = self.v.merge_queue
+                    .iter()
+                    .find(| d | d.title_id == *title_id)
+                ;
+                if let Some(merge) = existing_merge {
+                    match merge.last_received_status {
+                        MergeStatus::PartProgress(_) => {
+                            let progress = merge.part_progress as f32 / update.packages.len() as f32;
+                            ui.add(egui::ProgressBar::new(progress).show_percentage());
+                        }
+                        _ => {}
+                    }
                 }
             })
         ;
