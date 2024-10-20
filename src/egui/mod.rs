@@ -522,7 +522,7 @@ impl UpdatesApp {
     
                     for pkg in update.packages.iter() {
                         // Avoid duplicates by checking if there's already a download for this serial and version on the queue.
-                        if !self.v.download_queue.iter().any(| d | &d.title_id == title_id && d.pkg_id == pkg.id()) {
+                        if self.get_active_download(&title_id, pkg).is_none() {
                             info!("Downloading update {} for serial {title_id} (group)", pkg.id());
                             self.add_download(self.start_download(title_id.to_string(), title.clone(), pkg.clone()));
                         }
@@ -533,9 +533,7 @@ impl UpdatesApp {
 
                 let is_multipart = update.packages.len() > 1;
                 let all_pkgs_completed = update.packages.iter().all(|pkg| {
-                    self.v.completed_downloads.iter().find(|(id, pkg_id)| {
-                        title_id == id && *pkg_id == pkg.id()
-                    }).is_some()
+                    return self.pkg_download_status(title_id, pkg) == PkgDownloadStatus::Completed;
                 });
                 let is_mergable = is_multipart && all_pkgs_completed;
                 let hover_text = if is_multipart {
@@ -558,11 +556,7 @@ impl UpdatesApp {
                     ui.add_space(5.0);
                 }
 
-                let existing_merge = self.v.merge_queue
-                    .iter()
-                    .find(| d | d.title_id == *title_id)
-                ;
-                if let Some(merge) = existing_merge {
+                if let Some(merge) = self.get_active_merge(title_id) {
                     match merge.last_received_status {
                         MergeStatus::PartProgress(_) => {
                             let progress = merge.part_progress as f32 / update.packages.len() as f32;
@@ -731,12 +725,20 @@ impl UpdatesApp {
         self.v.download_queue.push(download);
     }
 
-    fn pkg_download_status(&self, title_id: &str, pkg: &PackageInfo) -> PkgDownloadStatus {
-        let existing_download = self.v.download_queue
+    fn get_active_download(&self, title_id: &str, pkg: &PackageInfo) -> Option<&ActiveDownload> {
+        return self.v.download_queue
             .iter()
             .find(| d | d.title_id == title_id && d.pkg_id == pkg.id());
+    } 
 
-        let download = match existing_download {
+    fn get_active_merge(&self, title_id: &str) -> Option<&ActiveMerge> {
+        return self.v.merge_queue
+            .iter()
+            .find(| d | d.title_id == title_id);
+    } 
+
+    fn pkg_download_status(&self, title_id: &str, pkg: &PackageInfo) -> PkgDownloadStatus {
+        let download = match self.get_active_download(title_id, pkg) {
             Some(d) => d,
             None => {
                 if self.v.completed_downloads.iter().any(| (id, pkg_id) | id == title_id && pkg_id == &pkg.id()) {
@@ -771,10 +773,7 @@ impl UpdatesApp {
             None => return PkgMergeStatus::NotMergable
         };
 
-        let existing_merge = self.v.merge_queue
-            .iter()
-            .find(| d | d.title_id == title_id);
-        if let Some(active_merge) = existing_merge {
+        if let Some(active_merge) = self.get_active_merge(title_id) {
             if active_merge.part_progress < part_number {
                 return PkgMergeStatus::Merging
             } else {
