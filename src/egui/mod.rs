@@ -533,7 +533,7 @@ impl UpdatesApp {
 
                 let is_multipart = update.packages.len() > 1;
                 let all_pkgs_completed = update.packages.iter().all(|pkg| {
-                    return self.pkg_download_status(title_id, pkg) == PkgDownloadStatus::Completed;
+                    return self.pkg_download_status(title_id, pkg) == ActiveDownloadStatus::Completed;
                 });
                 let is_mergable = is_multipart && all_pkgs_completed;
                 let hover_text = if is_multipart {
@@ -543,6 +543,21 @@ impl UpdatesApp {
                 };
                 let merge_btn = ui.add_enabled(is_mergable, Button::new("Merge parts"))
                     .on_disabled_hover_text(hover_text);
+
+                match self.title_merge_status(update) {
+                    ActiveMergeStatus::Merging(progress) => {
+                        ui.label(egui::RichText::new("Merging parts...").color(egui::Rgba::from_rgb(1.0, 1.0, 0.6)));
+                        ui.add(egui::ProgressBar::new(progress).show_percentage());
+                    },
+                    ActiveMergeStatus::Merged => {
+                        ui.label(egui::RichText::new("Parts merged").color(egui::Rgba::from_rgb(0.0, 1.0, 0.0)));
+                    },
+                    ActiveMergeStatus::Failed => {
+                        ui.label(egui::RichText::new("Parts merge failed").color(egui::Rgba::from_rgb(1.0, 0.0, 0.0)));
+                    },
+                    _ => {},
+                }
+
                 if merge_btn.clicked() {
                     self.v.merge_queue.push(self.start_merge_parts(update.clone()));
                 }
@@ -554,16 +569,6 @@ impl UpdatesApp {
                     self.draw_entry_pkg(ui, pkg, title_id, update.title());
 
                     ui.add_space(5.0);
-                }
-
-                if let Some(merge) = self.get_active_merge(title_id) {
-                    match merge.last_received_status {
-                        MergeStatus::PartProgress(_) => {
-                            let progress = merge.part_progress as f32 / update.packages.len() as f32;
-                            ui.add(egui::ProgressBar::new(progress).show_percentage());
-                        }
-                        _ => {}
-                    }
                 }
             })
         ;
@@ -587,35 +592,37 @@ impl UpdatesApp {
                 let download_status = self.pkg_download_status(title_id, pkg);
 
                 let download_enabled = match download_status {
-                    PkgDownloadStatus::Downloading(_) | PkgDownloadStatus::Verifying => false,
+                    ActiveDownloadStatus::Downloading(_) | ActiveDownloadStatus::Verifying => false,
                     _ => true
                 };
                 let download_btn = ui.add_enabled(download_enabled, egui::Button::new("Download file"));
                 match download_status {
-                    PkgDownloadStatus::NotStarted => {},
-                    PkgDownloadStatus::Verifying => {
+                    ActiveDownloadStatus::NotStarted => {},
+                    ActiveDownloadStatus::Verifying => {
                         ui.label(egui::RichText::new("Verifying download...").color(egui::Rgba::from_rgb(1.0, 1.0, 0.6)));
                     }
-                    PkgDownloadStatus::Downloading(progress) => {
+                    ActiveDownloadStatus::Downloading(progress) => {
                         ui.add(egui::ProgressBar::new(progress).show_percentage());
                     }
-                    PkgDownloadStatus::Completed => {
+                    ActiveDownloadStatus::Completed => {
                         ui.label(egui::RichText::new("Completed").color(egui::Rgba::from_rgb(0.0, 1.0, 0.0)));
                     }
-                    PkgDownloadStatus::Failed => {
+                    ActiveDownloadStatus::Failed => {
                         ui.label(egui::RichText::new("Failed").color(egui::Rgba::from_rgb(1.0, 0.0, 0.0)));
                     }
                 }
 
+                ui.separator();
+
                 match self.pkg_merge_status(title_id, pkg) {
-                    PkgMergeStatus::NotMergable | PkgMergeStatus::NotStarted => {},
-                    PkgMergeStatus::Failed => {
+                    ActiveMergeStatus::NotMergable | ActiveMergeStatus::NotStarted => {},
+                    ActiveMergeStatus::Failed => {
                         ui.label(egui::RichText::new("Merge failed").color(egui::Rgba::from_rgb(1.0, 0.0, 0.0)));
                     },
-                    PkgMergeStatus::Merged => {
+                    ActiveMergeStatus::Merged => {
                         ui.label(egui::RichText::new("Merged").color(egui::Rgba::from_rgb(0.0, 1.0, 0.0)));
                     },
-                    PkgMergeStatus::Merging => {
+                    ActiveMergeStatus::Merging(_) => {
                         ui.label(egui::RichText::new("Merging...").color(egui::Rgba::from_rgb(1.0, 1.0, 0.6)));
                     },
                 }
@@ -737,60 +744,73 @@ impl UpdatesApp {
             .find(| d | d.title_id == title_id);
     } 
 
-    fn pkg_download_status(&self, title_id: &str, pkg: &PackageInfo) -> PkgDownloadStatus {
+    fn title_merge_status(&self, update: &UpdateInfo) -> ActiveMergeStatus {
+        if let Some(active_merge) = self.get_active_merge(&update.title_id) {
+            let progress = active_merge.part_progress as f32 / update.packages.len() as f32;
+            return ActiveMergeStatus::Merging(progress);
+        } else if self.v.completed_merges.iter().any(|id| *id == update.title_id) {
+            return ActiveMergeStatus::Merged;
+        } else if self.v.failed_merges.iter().any(|id| *id == update.title_id) {
+            return ActiveMergeStatus::Failed;
+        }
+    
+        return ActiveMergeStatus::NotStarted;
+    }
+
+    fn pkg_download_status(&self, title_id: &str, pkg: &PackageInfo) -> ActiveDownloadStatus {
         let download = match self.get_active_download(title_id, pkg) {
             Some(d) => d,
             None => {
                 if self.v.completed_downloads.iter().any(| (id, pkg_id) | id == title_id && pkg_id == &pkg.id()) {
-                    return PkgDownloadStatus::Completed
+                    return ActiveDownloadStatus::Completed
                 }
                 else if self.v.failed_downloads.iter().any(| (id, pkg_id) | id == title_id && pkg_id == &pkg.id()) {
-                    return PkgDownloadStatus::Failed
+                    return ActiveDownloadStatus::Failed
                 }
 
-                return PkgDownloadStatus::NotStarted
+                return ActiveDownloadStatus::NotStarted
             }
         };
 
         match download.last_received_status {
             DownloadStatus::Progress(_) => {
-                return PkgDownloadStatus::Downloading(download.progress as f32 / download.size as f32)
+                return ActiveDownloadStatus::Downloading(download.progress as f32 / download.size as f32)
             }
             DownloadStatus::Verifying => {
-                return PkgDownloadStatus::Verifying
+                return ActiveDownloadStatus::Verifying
             }
             _ => {
-                return PkgDownloadStatus::NotStarted
+                return ActiveDownloadStatus::NotStarted
             }
         }
     }
 
-    fn pkg_merge_status(&self, title_id: &str, pkg: &PackageInfo) -> PkgMergeStatus {
-        if pkg.part_number.is_none() { return PkgMergeStatus::NotMergable; }
+    fn pkg_merge_status(&self, title_id: &str, pkg: &PackageInfo) -> ActiveMergeStatus {
+        if pkg.part_number.is_none() { return ActiveMergeStatus::NotMergable; }
 
         let part_number = match pkg.part_number {
             Some(part_num) => part_num,
-            None => return PkgMergeStatus::NotMergable
+            None => return ActiveMergeStatus::NotMergable
         };
 
         if let Some(active_merge) = self.get_active_merge(title_id) {
             if active_merge.part_progress < part_number {
-                return PkgMergeStatus::Merging
+                return ActiveMergeStatus::Merging(0.0)
             } else {
-                return PkgMergeStatus::Merged
+                return ActiveMergeStatus::Merged
             }
         } else if self.v.completed_merges.iter().any(|id| id == title_id) {
-            return PkgMergeStatus::Merged
+            return ActiveMergeStatus::Merged
         } else if self.v.failed_merges.iter().any(|id| id == title_id) {
-            return PkgMergeStatus::Failed
+            return ActiveMergeStatus::Failed
         }
 
-        return PkgMergeStatus::NotStarted
+        return ActiveMergeStatus::NotStarted
     }
 }
 
 #[derive(PartialEq, Debug, Clone, Copy)]
-enum PkgDownloadStatus {
+enum ActiveDownloadStatus {
     NotStarted,
     Downloading(f32),
     Verifying,
@@ -799,10 +819,10 @@ enum PkgDownloadStatus {
 }
 
 #[derive(PartialEq, Debug, Clone, Copy)]
-enum PkgMergeStatus {
+enum ActiveMergeStatus {
     NotMergable,
     NotStarted,
-    Merging,
+    Merging(f32),
     Merged,
     Failed
 }
