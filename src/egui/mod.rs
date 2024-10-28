@@ -309,32 +309,29 @@ impl UpdatesApp {
                 merge.last_received_status = status;
             }
 
-            let result = match merge.promise.ready() {
-                Some(res) => res,
-                None => continue
-            };
+            if let Some(result) = merge.promise.ready() {
+                match result {
+                    Ok(_) => {
+                        info!("Merge completed for {}", &merge.title_id);
 
-            match result {
-                Ok(_) => {
-                    info!("Merge completed for {}", &merge.title_id);
-
-                    toasts.push((format!("{} merged successfully!", &merge.title_id), ToastLevel::Success));
-                    self.v.completed_merges.push(merge.title_id.clone());
-                }
-                Err(e) => {
-                    self.v.failed_merges.push(merge.title_id.clone());
-
-                    match e {
-                        MergeError::FilepathMismatch(_) | MergeError::PackagesUnmergable(_) | MergeError::FileMergeFailure => {
-                            toasts.push((format!("Failed to merge {}. Check the log for details.", merge.title_id), ToastLevel::Error));
-                        }
+                        toasts.push((format!("{} merged successfully!", &merge.title_id), ToastLevel::Success));
+                        self.v.completed_merges.push(merge.title_id.clone());
                     }
+                    Err(e) => {
+                        self.v.failed_merges.push(merge.title_id.clone());
 
-                    error!("Could not merge files for {}, reason: {:?}", merge.title_id, e);
+                        match e {
+                            MergeError::FilepathMismatch(_) | MergeError::PackagesUnmergable(_) | MergeError::FileMergeFailure => {
+                                toasts.push((format!("Failed to merge {}. Check the log for details.", merge.title_id), ToastLevel::Error));
+                            }
+                        }
+
+                        error!("Could not merge files for {}, reason: {:?}", merge.title_id, e);
+                    }
                 }
-            }
 
-            finished_merge_indexes.push(i);
+                finished_merge_indexes.push(i);
+            }
         }
 
         for (_,idx) in finished_merge_indexes.iter().enumerate() {
