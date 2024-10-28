@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 use std::time::Duration;
 
-use eframe::egui::{self, Button};
+use eframe::egui::{self};
 use egui_notify::{Toast, Toasts, ToastLevel};
 
 use bytesize::ByteSize;
@@ -298,6 +298,7 @@ impl UpdatesApp {
     }
 
     fn handle_merge_promises(&mut self, toasts: &mut Vec<(String, ToastLevel)>) {
+        let mut finished_merge_indexes: Vec<usize> = Vec::new();
         for i in 0..self.v.merge_queue.len() {
             let merge = &mut self.v.merge_queue[i];
             if let Ok(status) = merge.progress_rx.try_recv() {
@@ -333,7 +334,11 @@ impl UpdatesApp {
                 }
             }
 
-            self.v.merge_queue.remove(i);
+            finished_merge_indexes.push(i);
+        }
+
+        for (_,idx) in finished_merge_indexes.iter().enumerate() {
+            self.v.merge_queue.remove(*idx);
         }
     }
 
@@ -541,7 +546,7 @@ impl UpdatesApp {
                 } else {
                     "This PS4 update is not a multipart update"
                 };
-                let merge_btn = ui.add_enabled(is_mergable, Button::new("Merge parts"))
+                let merge_btn = ui.add_enabled(is_mergable, egui::Button::new("Merge parts"))
                     .on_disabled_hover_text(hover_text);
 
                 match self.title_merge_status(update) {

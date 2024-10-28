@@ -172,7 +172,7 @@ impl UpdateInfo {
 
     pub async fn merge_parts(&self, tx: Sender<MergeStatus>, download_path: &PathBuf) -> Result<(), MergeError> {
         if !self.packages.iter().all(|pkg| pkg.part_number.is_some()) {
-            return Err(MergeError::PackagesUnmergable(String::from("some packages for the update are not a partial packages")));
+            return Err(MergeError::PackagesUnmergable(String::from("some packages for the update are not a partial package")));
         }
 
         let mut packages_sorted_by_part_number = self.packages.clone();
@@ -198,7 +198,7 @@ impl UpdateInfo {
             merged_path.push(&merged_file_name);
             let mut package_path = package_download_path.clone();
             package_path.push(&file_name);
-            match copy_pkg_file( &package_path, &merged_path, package.offset).await {
+            match copy_pkg_file(&package_path, &merged_path, package.offset).await {
                 Ok(read_length) => {
                     tx.send(MergeStatus::PartProgress(part_number)).await.unwrap();
                     info!("merged {} bytes from {} to {}", read_length, file_name, merged_file_name);
