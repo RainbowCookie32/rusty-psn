@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 use std::time::Duration;
 
-use eframe::egui::{self};
+use eframe::egui;
 use egui_notify::{Toast, Toasts, ToastLevel};
 
 use bytesize::ByteSize;
@@ -334,7 +334,7 @@ impl UpdatesApp {
             }
         }
 
-        for (_,idx) in finished_merge_indexes.iter().enumerate() {
+        for idx in finished_merge_indexes.iter().rev() {
             self.v.merge_queue.remove(*idx);
         }
     }
