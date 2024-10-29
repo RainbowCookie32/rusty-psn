@@ -27,6 +27,16 @@ pub struct ActiveDownload {
     progress_rx: mpsc::Receiver<DownloadStatus>
 }
 
+pub struct ActiveMerge {
+    title_id: String,
+
+    part_progress: usize,
+    last_received_status: MergeStatus,
+
+    promise: Promise<Result<(), MergeError>>,
+    progress_rx: mpsc::Receiver<MergeStatus>
+}
+
 #[derive(Clone, Deserialize, Serialize)]
 struct AppSettings {
     pkg_download_path: PathBuf,
@@ -64,6 +74,11 @@ struct VolatileData {
     failed_downloads: Vec<(String, String)>,
     completed_downloads: Vec<(String, String)>,
 
+    merge_queue: Vec<ActiveMerge>,
+    failed_merges: Vec<String>,
+    completed_merges: Vec<String>,
+
+
     search_promise: Option<Promise<Result<UpdateInfo, UpdateError>>>
 }
 
@@ -99,6 +114,10 @@ impl Default for VolatileData {
             download_queue: Vec::new(),
             failed_downloads: Vec::new(),
             completed_downloads: Vec::new(),
+
+            merge_queue: Vec::new(),
+            failed_merges: Vec::new(),
+            completed_merges: Vec::new(),
 
             search_promise: None
         }
@@ -138,6 +157,7 @@ impl eframe::App for UpdatesApp {
         self.handle_search_promise(&mut toasts);
         // Check in on active downloads.
         self.handle_download_promises(&mut toasts);
+        self.handle_merge_promises(&mut toasts);
 
         for (msg, level) in toasts {
             self.show_notifications(msg, level);
@@ -277,6 +297,48 @@ impl UpdatesApp {
         }
     }
 
+    fn handle_merge_promises(&mut self, toasts: &mut Vec<(String, ToastLevel)>) {
+        let mut finished_merge_indexes: Vec<usize> = Vec::new();
+        for i in 0..self.v.merge_queue.len() {
+            let merge = &mut self.v.merge_queue[i];
+            if let Ok(status) = merge.progress_rx.try_recv() {
+                if let MergeStatus::PartProgress(progress) = status {
+                    merge.part_progress = progress;
+                }
+
+                merge.last_received_status = status;
+            }
+
+            if let Some(result) = merge.promise.ready() {
+                match result {
+                    Ok(_) => {
+                        info!("Merge completed for {}", &merge.title_id);
+
+                        toasts.push((format!("{} merged successfully!", &merge.title_id), ToastLevel::Success));
+                        self.v.completed_merges.push(merge.title_id.clone());
+                    }
+                    Err(e) => {
+                        self.v.failed_merges.push(merge.title_id.clone());
+
+                        match e {
+                            MergeError::FilepathMismatch(_) | MergeError::PackagesUnmergable(_) | MergeError::FileMergeFailure => {
+                                toasts.push((format!("Failed to merge {}. Check the log for details.", merge.title_id), ToastLevel::Error));
+                            }
+                        }
+
+                        error!("Could not merge files for {}, reason: {:?}", merge.title_id, e);
+                    }
+                }
+
+                finished_merge_indexes.push(i);
+            }
+        }
+
+        for idx in finished_merge_indexes.iter().rev() {
+            self.v.merge_queue.remove(*idx);
+        }
+    }
+
     fn start_download(&self, serial: String, title: String, pkg: PackageInfo) -> ActiveDownload {
         let (tx, rx) = tokio::sync::mpsc::channel(10);
         let id = serial.clone();
@@ -301,6 +363,30 @@ impl UpdatesApp {
             last_received_status: DownloadStatus::Verifying,
 
             promise: download_promise,
+            progress_rx: rx
+        }
+    }
+
+    fn start_merge_parts(&self, update_info: UpdateInfo) -> ActiveMerge {
+        let (tx, rx) = tokio::sync::mpsc::channel(10);
+        let download_path = self.settings.pkg_download_path.clone();
+        let title_id = update_info.title_id.clone();
+
+        let _guard = self.v.rt.enter();
+
+        let merge_promise = Promise::spawn_async(
+            async move {
+                update_info.merge_parts(tx, &download_path).await
+            }
+        );
+
+        ActiveMerge {
+            title_id,
+
+            part_progress: 0,
+            last_received_status: MergeStatus::PartProgress(0),
+
+            promise: merge_promise,
             progress_rx: rx
         }
     }
@@ -397,22 +483,14 @@ impl UpdatesApp {
     }
 
     fn draw_results_list(&mut self, ctx: &egui::Context, ui: &mut egui::Ui) {
-        let mut new_downloads = Vec::new();
-
         egui::ScrollArea::vertical().auto_shrink([false; 2]).show(ui, | ui | {
-            for update in self.v.update_results.iter() {
-                new_downloads.append(&mut self.draw_result_entry(ctx, ui, update));
+            for update in self.v.update_results.clone().iter() {
+                self.draw_result_entry(ctx, ui, update);
             }
         });
-
-        for dl in new_downloads {
-            self.v.download_queue.push(dl);
-        }
     }
 
-    fn draw_result_entry(&self, ctx: &egui::Context, ui: &mut egui::Ui, update: &UpdateInfo) -> Vec<ActiveDownload> {
-        let mut new_downloads = Vec::new();
-
+    fn draw_result_entry(&mut self, ctx: &egui::Context, ui: &mut egui::Ui, update: &UpdateInfo) {
         let total_updates_size = update.packages.iter()
             .map(| pkg | pkg.size)
             .sum::<u64>()
@@ -426,14 +504,7 @@ impl UpdatesApp {
 
         egui::collapsing_header::CollapsingState::load_with_default_open(ctx, id, false)
             .show_header(ui, | ui | {
-                let title = {
-                    if let Some(title) = update.titles.get(0) {
-                        title.clone()
-                    }
-                    else {
-                        String::new()
-                    }
-                };
+                let title =  update.title();
 
                 let collapsing_title = {
                     if !title.is_empty() {
@@ -453,29 +524,51 @@ impl UpdatesApp {
     
                     for pkg in update.packages.iter() {
                         // Avoid duplicates by checking if there's already a download for this serial and version on the queue.
-                        if !self.v.download_queue.iter().any(| d | &d.title_id == title_id && d.pkg_id == pkg.id()) {
+                        if self.get_active_download(&title_id, pkg).is_none() {
                             info!("Downloading update {} for serial {title_id} (group)", pkg.id());
-                            new_downloads.push(self.start_download(title_id.to_string(), title.clone(), pkg.clone()));
+                            self.add_download(self.start_download(title_id.to_string(), title.clone(), pkg.clone()));
                         }
                     }
+                }
+
+                if platform_variant != utils::PlaformVariant::PS4 { return; }
+
+                let is_multipart = update.packages.len() > 1;
+                let all_pkgs_completed = update.packages.iter().all(|pkg| {
+                    return self.pkg_download_status(title_id, pkg) == ActiveDownloadStatus::Completed;
+                });
+                let is_mergable = is_multipart && all_pkgs_completed;
+                let hover_text = if is_multipart {
+                    "All parts need to be completed for merge to be available"
+                } else {
+                    "This PS4 update is not a multipart update"
+                };
+                let merge_btn = ui.add_enabled(is_mergable, egui::Button::new("Merge parts"))
+                    .on_disabled_hover_text(hover_text);
+
+                match self.title_merge_status(update) {
+                    ActiveMergeStatus::Merging(progress) => {
+                        ui.label(egui::RichText::new("Merging parts...").color(egui::Rgba::from_rgb(1.0, 1.0, 0.6)));
+                        ui.add(egui::ProgressBar::new(progress).show_percentage());
+                    },
+                    ActiveMergeStatus::Merged => {
+                        ui.label(egui::RichText::new("Parts merged").color(egui::Rgba::from_rgb(0.0, 1.0, 0.0)));
+                    },
+                    ActiveMergeStatus::Failed => {
+                        ui.label(egui::RichText::new("Parts merge failed").color(egui::Rgba::from_rgb(1.0, 0.0, 0.0)));
+                    },
+                    _ => {},
+                }
+
+                if merge_btn.clicked() {
+                    self.v.merge_queue.push(self.start_merge_parts(update.clone()));
                 }
             })
             .body(| ui | {
                 ui.add_space(5.0);
 
                 for pkg in update.packages.iter() {
-                    let title = {
-                        if let Some(title) = update.titles.get(0) {
-                            title.clone()
-                        }
-                        else {
-                            String::new()
-                        }
-                    };
-
-                    if let Some(download) = self.draw_entry_pkg(ui, pkg, title_id, title) {
-                        new_downloads.push(download);
-                    }
+                    self.draw_entry_pkg(ui, pkg, title_id, update.title());
 
                     ui.add_space(5.0);
                 }
@@ -484,13 +577,9 @@ impl UpdatesApp {
 
         ui.separator();
         ui.add_space(5.0);
-
-        new_downloads
     }
 
-    fn draw_entry_pkg(&self, ui: &mut egui::Ui, pkg: &PackageInfo, title_id: &str, title: String) -> Option<ActiveDownload> {
-        let mut download = None;
-
+    fn draw_entry_pkg(&mut self, ui: &mut egui::Ui, pkg: &PackageInfo, title_id: &str, title: String) {
         ui.group(| ui | {
             ui.strong(format!("Package Version: {}", pkg.id()));
             ui.label(format!("Size: {}", ByteSize::b(pkg.size)));
@@ -502,41 +591,53 @@ impl UpdatesApp {
             ui.separator();
     
             ui.horizontal(| ui | {
-                let existing_download = self.v.download_queue
-                    .iter()
-                    .find(| d | d.title_id == title_id && d.pkg_id == pkg.id())
-                ;
-                
-                if ui.add_enabled(existing_download.is_none(), egui::Button::new("Download file")).clicked() {
-                    info!("Downloading update {} for serial {} (individual)", pkg.version, title_id);
-                    download = Some(self.start_download(title_id.to_string(), title, pkg.clone()));
-                }
-                
-                if let Some(download) = existing_download {
-                    match download.last_received_status {
-                        DownloadStatus::Progress(_) => {
-                            let progress = download.progress as f32 / download.size as f32;
-                            ui.add(egui::ProgressBar::new(progress).show_percentage());
-                        }
-                        DownloadStatus::Verifying => {
-                            ui.label(egui::RichText::new("Verifying download...").color(egui::Rgba::from_rgb(1.0, 1.0, 0.6)));
-                        }
-                        _ => {}
+                let download_status = self.pkg_download_status(title_id, pkg);
+
+                let download_enabled = match download_status {
+                    ActiveDownloadStatus::Downloading(_) | ActiveDownloadStatus::Verifying => false,
+                    _ => true
+                };
+                let download_btn = ui.add_enabled(download_enabled, egui::Button::new("Download file"));
+                match download_status {
+                    ActiveDownloadStatus::NotStarted => {},
+                    ActiveDownloadStatus::Verifying => {
+                        ui.label(egui::RichText::new("Verifying download...").color(egui::Rgba::from_rgb(1.0, 1.0, 0.6)));
+                    }
+                    ActiveDownloadStatus::Downloading(progress) => {
+                        ui.add(egui::ProgressBar::new(progress).show_percentage());
+                    }
+                    ActiveDownloadStatus::Completed => {
+                        ui.label(egui::RichText::new("Completed").color(egui::Rgba::from_rgb(0.0, 1.0, 0.0)));
+                    }
+                    ActiveDownloadStatus::Failed => {
+                        ui.label(egui::RichText::new("Failed").color(egui::Rgba::from_rgb(1.0, 0.0, 0.0)));
                     }
                 }
-                else if self.v.completed_downloads.iter().any(| (id, pkg_id) | id == title_id && pkg_id == &pkg.id()) {
-                    ui.label(egui::RichText::new("Completed").color(egui::Rgba::from_rgb(0.0, 1.0, 0.0)));
+
+                ui.separator();
+
+                match self.pkg_merge_status(title_id, pkg) {
+                    ActiveMergeStatus::NotMergable | ActiveMergeStatus::NotStarted => {},
+                    ActiveMergeStatus::Failed => {
+                        ui.label(egui::RichText::new("Merge failed").color(egui::Rgba::from_rgb(1.0, 0.0, 0.0)));
+                    },
+                    ActiveMergeStatus::Merged => {
+                        ui.label(egui::RichText::new("Merged").color(egui::Rgba::from_rgb(0.0, 1.0, 0.0)));
+                    },
+                    ActiveMergeStatus::Merging(_) => {
+                        ui.label(egui::RichText::new("Merging...").color(egui::Rgba::from_rgb(1.0, 1.0, 0.6)));
+                    },
                 }
-                else if self.v.failed_downloads.iter().any(| (id, pkg_id) | id == title_id && pkg_id == &pkg.id()) {
-                    ui.label(egui::RichText::new("Failed").color(egui::Rgba::from_rgb(1.0, 0.0, 0.0)));
-                }
-            
+
                 let remaining_space = ui.available_size_before_wrap();
                 ui.add_space(remaining_space.x);
+
+                if download_btn.clicked() {
+                    info!("Downloading update {} for serial {} (individual)", pkg.version, title_id);
+                    self.add_download(self.start_download(title_id.to_string(), title, pkg.clone()));
+                }
             });
         });
-
-        download
     }
 
     fn draw_settings_window(&mut self, ctx: &egui::Context) {
@@ -628,4 +729,102 @@ impl UpdatesApp {
             });
         });
     }
+
+    fn add_download(&mut self, download: ActiveDownload) {
+        self.v.download_queue.push(download);
+    }
+
+    fn get_active_download(&self, title_id: &str, pkg: &PackageInfo) -> Option<&ActiveDownload> {
+        return self.v.download_queue
+            .iter()
+            .find(| d | d.title_id == title_id && d.pkg_id == pkg.id());
+    } 
+
+    fn get_active_merge(&self, title_id: &str) -> Option<&ActiveMerge> {
+        return self.v.merge_queue
+            .iter()
+            .find(| d | d.title_id == title_id);
+    } 
+
+    fn title_merge_status(&self, update: &UpdateInfo) -> ActiveMergeStatus {
+        if let Some(active_merge) = self.get_active_merge(&update.title_id) {
+            let progress = active_merge.part_progress as f32 / update.packages.len() as f32;
+            return ActiveMergeStatus::Merging(progress);
+        } else if self.v.completed_merges.iter().any(|id| *id == update.title_id) {
+            return ActiveMergeStatus::Merged;
+        } else if self.v.failed_merges.iter().any(|id| *id == update.title_id) {
+            return ActiveMergeStatus::Failed;
+        }
+    
+        return ActiveMergeStatus::NotStarted;
+    }
+
+    fn pkg_download_status(&self, title_id: &str, pkg: &PackageInfo) -> ActiveDownloadStatus {
+        let download = match self.get_active_download(title_id, pkg) {
+            Some(d) => d,
+            None => {
+                if self.v.completed_downloads.iter().any(| (id, pkg_id) | id == title_id && pkg_id == &pkg.id()) {
+                    return ActiveDownloadStatus::Completed
+                }
+                else if self.v.failed_downloads.iter().any(| (id, pkg_id) | id == title_id && pkg_id == &pkg.id()) {
+                    return ActiveDownloadStatus::Failed
+                }
+
+                return ActiveDownloadStatus::NotStarted
+            }
+        };
+
+        match download.last_received_status {
+            DownloadStatus::Progress(_) => {
+                return ActiveDownloadStatus::Downloading(download.progress as f32 / download.size as f32)
+            }
+            DownloadStatus::Verifying => {
+                return ActiveDownloadStatus::Verifying
+            }
+            _ => {
+                return ActiveDownloadStatus::NotStarted
+            }
+        }
+    }
+
+    fn pkg_merge_status(&self, title_id: &str, pkg: &PackageInfo) -> ActiveMergeStatus {
+        if pkg.part_number.is_none() { return ActiveMergeStatus::NotMergable; }
+
+        let part_number = match pkg.part_number {
+            Some(part_num) => part_num,
+            None => return ActiveMergeStatus::NotMergable
+        };
+
+        if let Some(active_merge) = self.get_active_merge(title_id) {
+            if active_merge.part_progress < part_number {
+                return ActiveMergeStatus::Merging(0.0)
+            } else {
+                return ActiveMergeStatus::Merged
+            }
+        } else if self.v.completed_merges.iter().any(|id| id == title_id) {
+            return ActiveMergeStatus::Merged
+        } else if self.v.failed_merges.iter().any(|id| id == title_id) {
+            return ActiveMergeStatus::Failed
+        }
+
+        return ActiveMergeStatus::NotStarted
+    }
+}
+
+#[derive(PartialEq, Debug, Clone, Copy)]
+enum ActiveDownloadStatus {
+    NotStarted,
+    Downloading(f32),
+    Verifying,
+    Completed,
+    Failed
+}
+
+#[derive(PartialEq, Debug, Clone, Copy)]
+enum ActiveMergeStatus {
+    NotMergable,
+    NotStarted,
+    Merging(f32),
+    Merged,
+    Failed
 }

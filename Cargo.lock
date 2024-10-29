@@ -3255,7 +3255,7 @@ dependencies = [
 
 [[package]]
 name = "rusty-psn"
-version = "0.3.8"
+version = "0.5.2"
 dependencies = [
  "bytesize",
  "clap",
