@@ -308,6 +308,12 @@ impl PackageInfo {
                     error!("Failed to write chunk data: {e}");
                     return Err(DownloadError::Tokio(e));
                 }
+
+            }
+
+            if let Err(e) = pkg_file.sync_all().await {
+                error!("Failed to flush all data to file: {e}");
+                return Err(DownloadError::Tokio(e));
             }
 
             if received_data < self.size {
