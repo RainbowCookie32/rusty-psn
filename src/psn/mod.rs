@@ -293,7 +293,7 @@ impl PackageInfo {
                 return Err(DownloadError::Tokio(e));
             }
 
-            if let Err(e) = pkg_file.seek(SeekFrom::End(0)).await {
+            if let Err(e) = pkg_file.seek(SeekFrom::Start(0)).await {
                 error!("Failed to set the package file cursor at position 0: {e}");
                 return Err(DownloadError::Tokio(e));
             };
