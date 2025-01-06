@@ -5,7 +5,7 @@ mod manifest_parser;
 use std::{path::PathBuf, str::FromStr};
 
 use reqwest::Url;
-use tokio::io::AsyncWriteExt;
+use tokio::io::{SeekFrom, AsyncSeekExt, AsyncWriteExt};
 use tokio::sync::mpsc::Sender;
 use utils::{copy_pkg_file, get_platform_variant, get_update_info_url, PlaformVariant};
 
@@ -289,9 +289,14 @@ impl PackageInfo {
 
         if !crate::utils::hash_file(&mut pkg_file, &self.sha1sum, self.hash_whole_file).await? {
             if let Err(e) = pkg_file.set_len(0).await {
-                error!("Failed to set file lenght to 0: {e}");
+                error!("Failed to set file length to 0: {e}");
                 return Err(DownloadError::Tokio(e));
             }
+
+            if let Err(e) = pkg_file.seek(SeekFrom::End(0)).await {
+                error!("Failed to set the package file cursor at position 0: {e}");
+                return Err(DownloadError::Tokio(e));
+            };
 
             let mut received_data = 0;
 
