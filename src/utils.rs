@@ -127,9 +127,9 @@ pub async fn hash_file(
         // In such case file chunk is stripped of those extra suffix bits.
         let suffix_part_in_chunk = processed_length > file_length_without_suffix;
         let hashable_buffer = if suffix_part_in_chunk {
-            let last_before_suffix = (file_length_without_suffix - previously_processed_length)
-                .try_into()
-                .map_err(|_| DownloadError::HashMismatch(true))?;
+            let last_before_suffix = file_length_without_suffix
+                .checked_sub(previously_processed_length)
+                .ok_or_else(|| DownloadError::HashMismatch(true))?;
             &chunk_buffer[..last_before_suffix]
         } else {
             chunk_buffer
