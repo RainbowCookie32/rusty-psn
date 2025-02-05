@@ -83,7 +83,7 @@ pub fn start_app(args: Args) {
 
     for update in update_info {
         let title = {
-            if let Some(title) = update.titles.get(0) {
+            if let Some(title) = update.titles.first() {
                 title.clone()
             } else {
                 warn!("Failed to get update's title: Last pkg's info didn't contain a title");

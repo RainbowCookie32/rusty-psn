@@ -77,7 +77,7 @@ impl UpdateInfo {
     }
 
     pub fn title(&self) -> String {
-        if let Some(title) = self.titles.get(0) {
+        if let Some(title) = self.titles.first() {
             title.clone()
         } else {
             String::new()
