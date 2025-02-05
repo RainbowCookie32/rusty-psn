@@ -43,7 +43,7 @@ pub async fn create_pkg_file(
     title: &str,
     pkg_name: &str,
 ) -> Result<File, DownloadError> {
-    let mut target_path = create_new_pkg_path(&download_path, serial, &title);
+    let mut target_path = create_new_pkg_path(&download_path, serial, title);
 
     // Check for the old path format.
     let old_path = create_old_pkg_path(&download_path, serial);
@@ -132,10 +132,10 @@ pub async fn hash_file(
                 .map_err(|_| DownloadError::HashMismatch(true))?;
             &chunk_buffer[..last_before_suffix]
         } else {
-            &chunk_buffer
+            chunk_buffer
         };
 
-        hasher.update(&hashable_buffer);
+        hasher.update(hashable_buffer);
         reader.consume(chunk_length);
         if suffix_part_in_chunk {
             break; // Since unhashable suffix has already been encountered, either in part or in full, there's no need to read rest of the file anymore.
