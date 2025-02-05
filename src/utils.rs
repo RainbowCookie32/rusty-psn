@@ -122,7 +122,7 @@ pub async fn hash_file(
         }
 
         let previously_processed_length: usize = processed_length;
-        processed_length = processed_length + chunk_length;
+        processed_length += chunk_length;
         // While iterating through the file a chunk being processed may already include some hash suffix bits which should not be hashed.
         // In such case file chunk is stripped of those extra suffix bits.
         let suffix_part_in_chunk = processed_length > file_length_without_suffix;
