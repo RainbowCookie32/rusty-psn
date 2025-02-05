@@ -614,7 +614,7 @@ impl UpdatesApp {
 
                 let is_multipart = update.packages.len() > 1;
                 let all_pkgs_completed = update.packages.iter().all(|pkg| {
-                    return self.pkg_download_status(title_id, pkg) == ActiveDownloadStatus::Completed;
+                    self.pkg_download_status(title_id, pkg) == ActiveDownloadStatus::Completed
                 });
                 let is_mergable = is_multipart && all_pkgs_completed;
                 let hover_text = if is_multipart {
@@ -873,15 +873,15 @@ impl UpdatesApp {
     }
 
     fn get_active_download(&self, title_id: &str, pkg: &PackageInfo) -> Option<&ActiveDownload> {
-        return self
+        self
             .v
             .download_queue
             .iter()
-            .find(|d| d.title_id == title_id && d.pkg_id == pkg.id());
+            .find(|d| d.title_id == title_id && d.pkg_id == pkg.id())
     }
 
     fn get_active_merge(&self, title_id: &str) -> Option<&ActiveMerge> {
-        return self.v.merge_queue.iter().find(|d| d.title_id == title_id);
+        self.v.merge_queue.iter().find(|d| d.title_id == title_id)
     }
 
     fn title_merge_status(&self, update: &UpdateInfo) -> ActiveMergeStatus {
@@ -899,7 +899,7 @@ impl UpdatesApp {
             return ActiveMergeStatus::Failed;
         }
 
-        return ActiveMergeStatus::NotStarted;
+        ActiveMergeStatus::NotStarted
     }
 
     fn pkg_download_status(&self, title_id: &str, pkg: &PackageInfo) -> ActiveDownloadStatus {
@@ -928,12 +928,12 @@ impl UpdatesApp {
 
         match download.last_received_status {
             DownloadStatus::Progress(_) => {
-                return ActiveDownloadStatus::Downloading(
+                ActiveDownloadStatus::Downloading(
                     download.progress as f32 / download.size as f32,
                 )
             }
-            DownloadStatus::Verifying => return ActiveDownloadStatus::Verifying,
-            _ => return ActiveDownloadStatus::NotStarted,
+            DownloadStatus::Verifying => ActiveDownloadStatus::Verifying,
+            _ => ActiveDownloadStatus::NotStarted,
         }
     }
 
@@ -959,7 +959,7 @@ impl UpdatesApp {
             return ActiveMergeStatus::Failed;
         }
 
-        return ActiveMergeStatus::NotStarted;
+        ActiveMergeStatus::NotStarted
     }
 }
 
