@@ -678,10 +678,7 @@ impl UpdatesApp {
             ui.horizontal(|ui| {
                 let download_status = self.pkg_download_status(title_id, pkg);
 
-                let download_enabled = match download_status {
-                    ActiveDownloadStatus::Downloading(_) | ActiveDownloadStatus::Verifying => false,
-                    _ => true,
-                };
+                let download_enabled = !matches!(download_status, ActiveDownloadStatus::Downloading(_) | ActiveDownloadStatus::Verifying);
                 let download_btn =
                     ui.add_enabled(download_enabled, egui::Button::new("Download file"));
                 match download_status {
