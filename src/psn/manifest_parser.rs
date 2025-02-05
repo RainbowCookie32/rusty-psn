@@ -1,5 +1,4 @@
 use serde::{Deserialize, Serialize};
-use serde_json;
 
 use super::{PackageInfo, UpdateInfo};
 
