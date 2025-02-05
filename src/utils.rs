@@ -6,7 +6,7 @@ use sha1_smol::Sha1;
 use tokio::fs;
 use tokio::fs::{File, OpenOptions};
 
-use tokio::io::{self, AsyncBufReadExt, BufReader, AsyncSeekExt, SeekFrom};
+use tokio::io::{self, AsyncBufReadExt, AsyncSeekExt, BufReader, SeekFrom};
 
 use crate::psn::DownloadError;
 
@@ -17,8 +17,8 @@ const INVALID_CHARS: [char; 9] = ['<', '>', ':', '"', '/', '\\', '|', '?', '*'];
 const INVALID_CHARS: [char; 1] = ['/'];
 
 fn sanitize_title(title: &str) -> String {
-   //replace invalid characters with underscores or anything we want lol
-   title.replace(| c | INVALID_CHARS.contains(&c), "_")
+    //replace invalid characters with underscores or anything we want lol
+    title.replace(|c| INVALID_CHARS.contains(&c), "_")
 }
 
 fn create_old_pkg_path(download_path: &PathBuf, serial: &str) -> PathBuf {
@@ -34,7 +34,12 @@ pub fn create_new_pkg_path(download_path: &PathBuf, serial: &str, title: &str) -
     target_path
 }
 
-pub async fn create_pkg_file(download_path: PathBuf, serial: &str, title: &str, pkg_name: &str) -> Result<File, DownloadError> {
+pub async fn create_pkg_file(
+    download_path: PathBuf,
+    serial: &str,
+    title: &str,
+    pkg_name: &str,
+) -> Result<File, DownloadError> {
     let mut target_path = create_new_pkg_path(&download_path, serial, &title);
 
     // Check for the old path format.
@@ -46,22 +51,23 @@ pub async fn create_pkg_file(download_path: PathBuf, serial: &str, title: &str, 
             error!("Failed to rename folder: {e}");
         }
     }
-    
+
     target_path.push(pkg_name);
     info!("Creating file for pkg at path {:?}", target_path);
 
     if let Some(parent) = target_path.parent() {
         match fs::create_dir_all(parent).await {
             Ok(_) => info!("Created directory for updates"),
-            Err(e) => {
-                match e.kind() {
-                    io::ErrorKind::AlreadyExists => {},
-                    _ => return Err(DownloadError::Tokio(e)),
-                }
-            }
+            Err(e) => match e.kind() {
+                io::ErrorKind::AlreadyExists => {}
+                _ => return Err(DownloadError::Tokio(e)),
+            },
         }
     } else {
-        return Err(DownloadError::Tokio(io::Error::new(io::ErrorKind::Other, "Target path has no parent directory")));
+        return Err(DownloadError::Tokio(io::Error::new(
+            io::ErrorKind::Other,
+            "Target path has no parent directory",
+        )));
     }
 
     // Using OpenOptions to avoid the file getting truncated if it already exists
@@ -76,7 +82,11 @@ pub async fn create_pkg_file(download_path: PathBuf, serial: &str, title: &str, 
 }
 
 const CHUNK_SIZE: usize = 1024 * 1024 * 128;
-pub async fn hash_file(file: &mut File, hash: &str, hash_whole_file: bool) -> Result<bool, DownloadError> {
+pub async fn hash_file(
+    file: &mut File,
+    hash: &str,
+    hash_whole_file: bool,
+) -> Result<bool, DownloadError> {
     let mut hasher = Sha1::new();
 
     // Last 0x20 bytes are the SHA1 hash for PS3 updates. PS4 updates don't include hash suffix.
@@ -95,7 +105,9 @@ pub async fn hash_file(file: &mut File, hash: &str, hash_whole_file: bool) -> Re
 
     // Write operations during the download move the internal seek pointer.
     // Resetting it to 0 makes reader actually read the whole thing.
-    file.seek(SeekFrom::Start(0)).await.map_err(DownloadError::Tokio)?;
+    file.seek(SeekFrom::Start(0))
+        .await
+        .map_err(DownloadError::Tokio)?;
 
     let mut reader = BufReader::with_capacity(CHUNK_SIZE, file);
     let mut processed_length = 0;
@@ -105,7 +117,7 @@ pub async fn hash_file(file: &mut File, hash: &str, hash_whole_file: bool) -> Re
         if chunk_length == 0 {
             break;
         }
-        
+
         let previously_processed_length: usize = processed_length;
         processed_length = processed_length + chunk_length;
         // While iterating through the file a chunk being processed may already include some hash suffix bits which should not be hashed.

@@ -2,16 +2,16 @@ use std::path::PathBuf;
 use std::time::Duration;
 
 use eframe::egui;
-use egui_notify::{Toast, Toasts, ToastLevel};
+use egui_notify::{Toast, ToastLevel, Toasts};
 
 use bytesize::ByteSize;
-use poll_promise::Promise;
-use notify_rust::Notification;
-use serde::{Deserialize, Serialize};
 use copypasta::{ClipboardContext, ClipboardProvider};
+use notify_rust::Notification;
+use poll_promise::Promise;
+use serde::{Deserialize, Serialize};
 
-use tokio::sync::mpsc;
 use tokio::runtime::Runtime;
+use tokio::sync::mpsc;
 
 use crate::psn::*;
 
@@ -24,7 +24,7 @@ pub struct ActiveDownload {
     last_received_status: DownloadStatus,
 
     promise: Promise<Result<(), DownloadError>>,
-    progress_rx: mpsc::Receiver<DownloadStatus>
+    progress_rx: mpsc::Receiver<DownloadStatus>,
 }
 
 pub struct ActiveMerge {
@@ -34,7 +34,7 @@ pub struct ActiveMerge {
     last_received_status: MergeStatus,
 
     promise: Promise<Result<(), MergeError>>,
-    progress_rx: mpsc::Receiver<MergeStatus>
+    progress_rx: mpsc::Receiver<MergeStatus>,
 }
 
 #[derive(Clone, Deserialize, Serialize)]
@@ -49,7 +49,7 @@ impl Default for AppSettings {
         AppSettings {
             pkg_download_path: PathBuf::from("pkgs/"),
             show_toasts: true,
-            show_notifications: false
+            show_notifications: false,
         }
     }
 }
@@ -58,7 +58,7 @@ impl Default for AppSettings {
 struct VolatileData {
     rt: Runtime,
     toasts: Toasts,
-    
+
     clipboard: Option<Box<dyn ClipboardProvider>>,
 
     serial_query: String,
@@ -78,8 +78,7 @@ struct VolatileData {
     failed_merges: Vec<String>,
     completed_merges: Vec<String>,
 
-
-    search_promise: Option<Promise<Result<UpdateInfo, UpdateError>>>
+    search_promise: Option<Promise<Result<UpdateInfo, UpdateError>>>,
 }
 
 impl Default for VolatileData {
@@ -119,7 +118,7 @@ impl Default for VolatileData {
             failed_merges: Vec::new(),
             completed_merges: Vec::new(),
 
-            search_promise: None
+            search_promise: None,
         }
     }
 }
@@ -128,7 +127,7 @@ impl Default for VolatileData {
 pub struct UpdatesApp {
     #[serde(skip)]
     v: VolatileData,
-    settings: AppSettings
+    settings: AppSettings,
 }
 
 impl eframe::App for UpdatesApp {
@@ -137,7 +136,7 @@ impl eframe::App for UpdatesApp {
     }
 
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        egui::CentralPanel::default().show(ctx, | ui | {
+        egui::CentralPanel::default().show(ctx, |ui| {
             self.draw_search_bar(ui);
             ui.separator();
             self.draw_results_list(ctx, ui);
@@ -174,23 +173,30 @@ impl UpdatesApp {
 
         fonts.font_data.insert(
             "noto".to_owned(),
-            egui::FontData::from_static(include_bytes!("../../resources/NotoSans-Regular.ttf"))
+            egui::FontData::from_static(include_bytes!("../../resources/NotoSans-Regular.ttf")),
         );
 
         fonts.font_data.insert(
             "notojp".to_owned(),
-            egui::FontData::from_static(include_bytes!("../../resources/NotoSansJP-Regular.otf"))
+            egui::FontData::from_static(include_bytes!("../../resources/NotoSansJP-Regular.otf")),
         );
 
-        fonts.families.entry(egui::FontFamily::Proportional).or_default().insert(0, "noto".to_owned());
-        fonts.families.entry(egui::FontFamily::Proportional).or_default().insert(1, "notojp".to_owned());
+        fonts
+            .families
+            .entry(egui::FontFamily::Proportional)
+            .or_default()
+            .insert(0, "noto".to_owned());
+        fonts
+            .families
+            .entry(egui::FontFamily::Proportional)
+            .or_default()
+            .insert(1, "notojp".to_owned());
 
         cc.egui_ctx.set_fonts(fonts);
 
         if let Some(storage) = cc.storage {
             eframe::get_value(storage, eframe::APP_KEY).unwrap_or_default()
-        }
-        else {
+        } else {
             Default::default()
         }
     }
@@ -207,31 +213,48 @@ impl UpdatesApp {
 
             match promise_ready {
                 Ok(update_info) => {
-                    info!("Received search results for serial {}", update_info.title_id);
+                    info!(
+                        "Received search results for serial {}",
+                        update_info.title_id
+                    );
                     self.v.update_results.push(update_info);
                 }
                 Err(ref e) => {
                     match e {
                         UpdateError::UnhandledErrorResponse(e) => {
-                            toasts.push((format!("Unexpected error received in a response from PSN ({e})."), ToastLevel::Error));
+                            toasts.push((
+                                format!("Unexpected error received in a response from PSN ({e})."),
+                                ToastLevel::Error,
+                            ));
                         }
                         UpdateError::InvalidSerial => {
                             toasts.push((String::from("The provided serial didn't give any results, double-check your input."), ToastLevel::Error));
                         }
                         UpdateError::NoUpdatesAvailable => {
-                            toasts.push((String::from("The provided serial doesn't have any available updates."), ToastLevel::Error));
+                            toasts.push((
+                                String::from(
+                                    "The provided serial doesn't have any available updates.",
+                                ),
+                                ToastLevel::Error,
+                            ));
                         }
                         UpdateError::Reqwest(e) => {
-                            toasts.push((format!("There was an error completing the request ({e})."), ToastLevel::Error));
+                            toasts.push((
+                                format!("There was an error completing the request ({e})."),
+                                ToastLevel::Error,
+                            ));
                         }
                         UpdateError::XmlParsing(e) => {
-                            toasts.push((format!("Error parsing response from Sony, try again later ({e})."), ToastLevel::Error));
+                            toasts.push((
+                                format!("Error parsing response from Sony, try again later ({e})."),
+                                ToastLevel::Error,
+                            ));
                         }
                         UpdateError::ManifestParsing(e) => {
                             toasts.push((format!("Error parsing manifest response from Sony, try again later ({e})."), ToastLevel::Error));
                         }
                     }
-        
+
                     error!("Error received from updates query: {:?}", e);
                 }
             }
@@ -260,33 +283,67 @@ impl UpdatesApp {
 
                 match r {
                     Ok(_) => {
-                        info!("Download completed! ({} {})", &download.title_id, &download.pkg_id);
+                        info!(
+                            "Download completed! ({} {})",
+                            &download.title_id, &download.pkg_id
+                        );
 
                         // Add this download to the happy list of successful downloads.
-                        toasts.push((format!("{} v{} downloaded successfully!", &download.title_id, &download.pkg_id), ToastLevel::Success));
-                        self.v.completed_downloads.push((download.title_id.clone(), download.pkg_id.clone()));
+                        toasts.push((
+                            format!(
+                                "{} v{} downloaded successfully!",
+                                &download.title_id, &download.pkg_id
+                            ),
+                            ToastLevel::Success,
+                        ));
+                        self.v
+                            .completed_downloads
+                            .push((download.title_id.clone(), download.pkg_id.clone()));
                     }
                     Err(e) => {
                         // Add this download to the sad list of failed downloads and show the error window.
-                        self.v.failed_downloads.push((download.title_id.clone(), download.pkg_id.clone()));
+                        self.v
+                            .failed_downloads
+                            .push((download.title_id.clone(), download.pkg_id.clone()));
 
                         match e {
                             DownloadError::HashMismatch(short_on_data) => {
-                                toasts.push((format!("Failed to download {} v{}: Hash mismatch.", download.title_id, download.pkg_id), ToastLevel::Error));
+                                toasts.push((
+                                    format!(
+                                        "Failed to download {} v{}: Hash mismatch.",
+                                        download.title_id, download.pkg_id
+                                    ),
+                                    ToastLevel::Error,
+                                ));
 
                                 if *short_on_data {
                                     self.v.show_mismatch_warning_window = true;
                                 }
                             }
                             DownloadError::Tokio(_) => {
-                                toasts.push((format!("Failed to download {} v{}. Check the log for details.", download.title_id, download.pkg_id), ToastLevel::Error));
+                                toasts.push((
+                                    format!(
+                                        "Failed to download {} v{}. Check the log for details.",
+                                        download.title_id, download.pkg_id
+                                    ),
+                                    ToastLevel::Error,
+                                ));
                             }
                             DownloadError::Reqwest(_) => {
-                                toasts.push((format!("Failed to download {} v{}. Check the log for details.", download.title_id, download.pkg_id), ToastLevel::Error));
+                                toasts.push((
+                                    format!(
+                                        "Failed to download {} v{}. Check the log for details.",
+                                        download.title_id, download.pkg_id
+                                    ),
+                                    ToastLevel::Error,
+                                ));
                             }
                         }
 
-                        error!("Error received from pkg download ({} {}): {:?}", download.title_id, download.pkg_id, e);
+                        error!(
+                            "Error received from pkg download ({} {}): {:?}",
+                            download.title_id, download.pkg_id, e
+                        );
                     }
                 }
             }
@@ -314,19 +371,33 @@ impl UpdatesApp {
                     Ok(_) => {
                         info!("Merge completed for {}", &merge.title_id);
 
-                        toasts.push((format!("{} merged successfully!", &merge.title_id), ToastLevel::Success));
+                        toasts.push((
+                            format!("{} merged successfully!", &merge.title_id),
+                            ToastLevel::Success,
+                        ));
                         self.v.completed_merges.push(merge.title_id.clone());
                     }
                     Err(e) => {
                         self.v.failed_merges.push(merge.title_id.clone());
 
                         match e {
-                            MergeError::FilepathMismatch(_) | MergeError::PackagesUnmergable(_) | MergeError::FileMergeFailure => {
-                                toasts.push((format!("Failed to merge {}. Check the log for details.", merge.title_id), ToastLevel::Error));
+                            MergeError::FilepathMismatch(_)
+                            | MergeError::PackagesUnmergable(_)
+                            | MergeError::FileMergeFailure => {
+                                toasts.push((
+                                    format!(
+                                        "Failed to merge {}. Check the log for details.",
+                                        merge.title_id
+                                    ),
+                                    ToastLevel::Error,
+                                ));
                             }
                         }
 
-                        error!("Could not merge files for {}, reason: {:?}", merge.title_id, e);
+                        error!(
+                            "Could not merge files for {}, reason: {:?}",
+                            merge.title_id, e
+                        );
                     }
                 }
 
@@ -348,11 +419,9 @@ impl UpdatesApp {
 
         let _guard = self.v.rt.enter();
 
-        let download_promise = Promise::spawn_async(
-            async move {
-                pkg.start_download(tx, download_path, serial, title).await
-            }
-        );
+        let download_promise = Promise::spawn_async(async move {
+            pkg.start_download(tx, download_path, serial, title).await
+        });
 
         ActiveDownload {
             title_id: id,
@@ -363,7 +432,7 @@ impl UpdatesApp {
             last_received_status: DownloadStatus::Verifying,
 
             promise: download_promise,
-            progress_rx: rx
+            progress_rx: rx,
         }
     }
 
@@ -374,11 +443,8 @@ impl UpdatesApp {
 
         let _guard = self.v.rt.enter();
 
-        let merge_promise = Promise::spawn_async(
-            async move {
-                update_info.merge_parts(tx, &download_path).await
-            }
-        );
+        let merge_promise =
+            Promise::spawn_async(async move { update_info.merge_parts(tx, &download_path).await });
 
         ActiveMerge {
             title_id,
@@ -387,7 +453,7 @@ impl UpdatesApp {
             last_received_status: MergeStatus::PartProgress(0),
 
             promise: merge_promise,
-            progress_rx: rx
+            progress_rx: rx,
         }
     }
 
@@ -400,8 +466,7 @@ impl UpdatesApp {
             toast.set_duration(Some(Duration::from_secs(10)));
 
             self.v.toasts.add(toast);
-        }
-        else {
+        } else {
             info!("A toast was supposed to be showed, but they are disabled.")
         }
 
@@ -413,26 +478,28 @@ impl UpdatesApp {
             if let Err(e) = notification.show() {
                 error!("Failed to show system notification: {e}");
             }
-        }
-        else {
+        } else {
             info!("System notifications are disabled in settings, not showing.")
         }
     }
 
     fn draw_search_bar(&mut self, ui: &mut egui::Ui) {
-        ui.horizontal(| ui | {
+        ui.horizontal(|ui| {
             ui.label("Title Serial:");
 
             let serial_input = ui.text_edit_singleline(&mut self.v.serial_query);
-            let input_submitted = serial_input.lost_focus() && ui.input(| i | i.key_pressed(egui::Key::Enter));
+            let input_submitted =
+                serial_input.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
 
-            serial_input.context_menu(| ui | {
-                ui.add_enabled_ui(self.v.clipboard.is_some(), | ui | {
+            serial_input.context_menu(|ui| {
+                ui.add_enabled_ui(self.v.clipboard.is_some(), |ui| {
                     if let Some(clip_ctx) = self.v.clipboard.as_mut() {
                         if ui.button("Paste").clicked() {
-                            match clip_ctx.get_contents(){
+                            match clip_ctx.get_contents() {
                                 Ok(contents) => self.v.serial_query.push_str(&contents),
-                                Err(e) => warn!("Failed to paste clipboard contents: {}", e.to_string())
+                                Err(e) => {
+                                    warn!("Failed to paste clipboard contents: {}", e.to_string())
+                                }
                             }
 
                             ui.close_menu();
@@ -449,25 +516,38 @@ impl UpdatesApp {
             });
 
             ui.separator();
-            
-            ui.add_enabled_ui(!self.v.serial_query.is_empty() && self.v.search_promise.is_none(), | ui | {
-                if !input_submitted && !ui.button("Search for updates").clicked() { return; }
 
-                let already_searched = self.v.update_results.iter().any(|e| e.title_id == parse_title_id(&self.v.serial_query));
-                if already_searched { 
-                    self.show_notifications("Provided title id results already shown", ToastLevel::Info);
-                    return;
-                }
+            ui.add_enabled_ui(
+                !self.v.serial_query.is_empty() && self.v.search_promise.is_none(),
+                |ui| {
+                    if !input_submitted && !ui.button("Search for updates").clicked() {
+                        return;
+                    }
 
-                info!("Fetching updates for '{}'", self.v.serial_query);
+                    let already_searched = self
+                        .v
+                        .update_results
+                        .iter()
+                        .any(|e| e.title_id == parse_title_id(&self.v.serial_query));
+                    if already_searched {
+                        self.show_notifications(
+                            "Provided title id results already shown",
+                            ToastLevel::Info,
+                        );
+                        return;
+                    }
 
-                let _guard = self.v.rt.enter();
-                let promise = Promise::spawn_async(UpdateInfo::get_info(self.v.serial_query.clone()));
-                
-                self.v.search_promise = Some(promise);
-            });
+                    info!("Fetching updates for '{}'", self.v.serial_query);
 
-            ui.add_enabled_ui(!self.v.update_results.is_empty(), | ui | {
+                    let _guard = self.v.rt.enter();
+                    let promise =
+                        Promise::spawn_async(UpdateInfo::get_info(self.v.serial_query.clone()));
+
+                    self.v.search_promise = Some(promise);
+                },
+            );
+
+            ui.add_enabled_ui(!self.v.update_results.is_empty(), |ui| {
                 if ui.button("Clear results").clicked() {
                     self.v.update_results = Vec::new();
                 }
@@ -483,18 +563,17 @@ impl UpdatesApp {
     }
 
     fn draw_results_list(&mut self, ctx: &egui::Context, ui: &mut egui::Ui) {
-        egui::ScrollArea::vertical().auto_shrink([false; 2]).show(ui, | ui | {
-            for update in self.v.update_results.clone().iter() {
-                self.draw_result_entry(ctx, ui, update);
-            }
-        });
+        egui::ScrollArea::vertical()
+            .auto_shrink([false; 2])
+            .show(ui, |ui| {
+                for update in self.v.update_results.clone().iter() {
+                    self.draw_result_entry(ctx, ui, update);
+                }
+            });
     }
 
     fn draw_result_entry(&mut self, ctx: &egui::Context, ui: &mut egui::Ui, update: &UpdateInfo) {
-        let total_updates_size = update.packages.iter()
-            .map(| pkg | pkg.size)
-            .sum::<u64>()
-        ;
+        let total_updates_size = update.packages.iter().map(|pkg| pkg.size).sum::<u64>();
 
         let title_id = &update.title_id;
         let update_count = update.packages.len();
@@ -579,8 +658,14 @@ impl UpdatesApp {
         ui.add_space(5.0);
     }
 
-    fn draw_entry_pkg(&mut self, ui: &mut egui::Ui, pkg: &PackageInfo, title_id: &str, title: String) {
-        ui.group(| ui | {
+    fn draw_entry_pkg(
+        &mut self,
+        ui: &mut egui::Ui,
+        pkg: &PackageInfo,
+        title_id: &str,
+        title: String,
+    ) {
+        ui.group(|ui| {
             ui.strong(format!("Package Version: {}", pkg.id()));
             ui.label(format!("Size: {}", ByteSize::b(pkg.size)));
             ui.label(format!("SHA-1 hashsum: {}", pkg.sha1sum));
@@ -589,52 +674,78 @@ impl UpdatesApp {
             }
 
             ui.separator();
-    
-            ui.horizontal(| ui | {
+
+            ui.horizontal(|ui| {
                 let download_status = self.pkg_download_status(title_id, pkg);
 
                 let download_enabled = match download_status {
                     ActiveDownloadStatus::Downloading(_) | ActiveDownloadStatus::Verifying => false,
-                    _ => true
+                    _ => true,
                 };
-                let download_btn = ui.add_enabled(download_enabled, egui::Button::new("Download file"));
+                let download_btn =
+                    ui.add_enabled(download_enabled, egui::Button::new("Download file"));
                 match download_status {
-                    ActiveDownloadStatus::NotStarted => {},
+                    ActiveDownloadStatus::NotStarted => {}
                     ActiveDownloadStatus::Verifying => {
-                        ui.label(egui::RichText::new("Verifying download...").color(egui::Rgba::from_rgb(1.0, 1.0, 0.6)));
+                        ui.label(
+                            egui::RichText::new("Verifying download...")
+                                .color(egui::Rgba::from_rgb(1.0, 1.0, 0.6)),
+                        );
                     }
                     ActiveDownloadStatus::Downloading(progress) => {
                         ui.add(egui::ProgressBar::new(progress).show_percentage());
                     }
                     ActiveDownloadStatus::Completed => {
-                        ui.label(egui::RichText::new("Completed").color(egui::Rgba::from_rgb(0.0, 1.0, 0.0)));
+                        ui.label(
+                            egui::RichText::new("Completed")
+                                .color(egui::Rgba::from_rgb(0.0, 1.0, 0.0)),
+                        );
                     }
                     ActiveDownloadStatus::Failed => {
-                        ui.label(egui::RichText::new("Failed").color(egui::Rgba::from_rgb(1.0, 0.0, 0.0)));
+                        ui.label(
+                            egui::RichText::new("Failed")
+                                .color(egui::Rgba::from_rgb(1.0, 0.0, 0.0)),
+                        );
                     }
                 }
 
                 ui.separator();
 
                 match self.pkg_merge_status(title_id, pkg) {
-                    ActiveMergeStatus::NotMergable | ActiveMergeStatus::NotStarted => {},
+                    ActiveMergeStatus::NotMergable | ActiveMergeStatus::NotStarted => {}
                     ActiveMergeStatus::Failed => {
-                        ui.label(egui::RichText::new("Merge failed").color(egui::Rgba::from_rgb(1.0, 0.0, 0.0)));
-                    },
+                        ui.label(
+                            egui::RichText::new("Merge failed")
+                                .color(egui::Rgba::from_rgb(1.0, 0.0, 0.0)),
+                        );
+                    }
                     ActiveMergeStatus::Merged => {
-                        ui.label(egui::RichText::new("Merged").color(egui::Rgba::from_rgb(0.0, 1.0, 0.0)));
-                    },
+                        ui.label(
+                            egui::RichText::new("Merged")
+                                .color(egui::Rgba::from_rgb(0.0, 1.0, 0.0)),
+                        );
+                    }
                     ActiveMergeStatus::Merging(_) => {
-                        ui.label(egui::RichText::new("Merging...").color(egui::Rgba::from_rgb(1.0, 1.0, 0.6)));
-                    },
+                        ui.label(
+                            egui::RichText::new("Merging...")
+                                .color(egui::Rgba::from_rgb(1.0, 1.0, 0.6)),
+                        );
+                    }
                 }
 
                 let remaining_space = ui.available_size_before_wrap();
                 ui.add_space(remaining_space.x);
 
                 if download_btn.clicked() {
-                    info!("Downloading update {} for serial {} (individual)", pkg.version, title_id);
-                    self.add_download(self.start_download(title_id.to_string(), title, pkg.clone()));
+                    info!(
+                        "Downloading update {} for serial {} (individual)",
+                        pkg.version, title_id
+                    );
+                    self.add_download(self.start_download(
+                        title_id.to_string(),
+                        title,
+                        pkg.clone(),
+                    ));
                 }
             });
         });
@@ -642,68 +753,95 @@ impl UpdatesApp {
 
     fn draw_settings_window(&mut self, ctx: &egui::Context) {
         let mut show_window = self.v.show_settings_window;
-        let mut current_download_path = self.v.modified_settings.pkg_download_path.to_string_lossy().to_string();
+        let mut current_download_path = self
+            .v
+            .modified_settings
+            .pkg_download_path
+            .to_string_lossy()
+            .to_string();
 
         // Fixed size avoids a bug that makes the window gradually stretch itself vertically for some reason.
         // See https://github.com/RainbowCookie32/rusty-psn/issues/138
-        egui::Window::new("Settings").id(egui::Id::new("cfg_win")).open(&mut show_window).fixed_size([220.0, 200.0]).show(ctx, | ui | {
-            ui.label("Download Path");
-            ui.horizontal(| ui | {
-                ui.add_enabled_ui(false, | ui | {
-                    ui.text_edit_singleline(&mut current_download_path);
-                });
+        egui::Window::new("Settings")
+            .id(egui::Id::new("cfg_win"))
+            .open(&mut show_window)
+            .fixed_size([220.0, 200.0])
+            .show(ctx, |ui| {
+                ui.label("Download Path");
+                ui.horizontal(|ui| {
+                    ui.add_enabled_ui(false, |ui| {
+                        ui.text_edit_singleline(&mut current_download_path);
+                    });
 
-                if ui.button("Pick folder").clicked() {
-                    if let Some(path) = rfd::FileDialog::new().pick_folder() {
+                    if ui.button("Pick folder").clicked() {
+                        if let Some(path) = rfd::FileDialog::new().pick_folder() {
+                            self.v.settings_dirty = true;
+                            self.v.modified_settings.pkg_download_path = path;
+                        }
+                    }
+
+                    if ui.button("Reset").clicked() {
                         self.v.settings_dirty = true;
-                        self.v.modified_settings.pkg_download_path = path;
-                    }
-                }
-
-                if ui.button("Reset").clicked() {
-                    self.v.settings_dirty = true;
-                    self.v.modified_settings.pkg_download_path = PathBuf::from("/pkgs");
-                }
-            });
-
-            ui.add_space(5.0);
-
-            if ui.checkbox(&mut self.v.modified_settings.show_toasts, "Show in-app toasts").changed() {
-                self.v.settings_dirty = true;
-            }
-
-            if ui.checkbox(&mut self.v.modified_settings.show_notifications, "Show system notifications").changed() {
-                self.v.settings_dirty = true;
-            }
-
-            ui.with_layout(egui::Layout::bottom_up(egui::Align::TOP), | ui | {
-                ui.horizontal(| ui | {
-                    if ui.button("Save settings").clicked() {
-                        self.v.settings_dirty = false;
-                        self.v.show_settings_window = false;
-
-                        self.settings = self.v.modified_settings.clone();
-                    }
-
-                    if ui.add_enabled(self.v.settings_dirty, egui::Button::new("Discard changes")).clicked() {
-                        self.v.settings_dirty = false;
-                        self.v.show_settings_window = false;
-
-                        self.v.modified_settings = self.settings.clone();
-                    }
-
-                    if ui.button("Restore to defaults").clicked() {
-                        self.v.settings_dirty = false;
-                        self.v.show_settings_window = false;
-                        
-                        self.settings = AppSettings::default();
-                        self.v.modified_settings = AppSettings::default();
+                        self.v.modified_settings.pkg_download_path = PathBuf::from("/pkgs");
                     }
                 });
 
-                ui.separator();
+                ui.add_space(5.0);
+
+                if ui
+                    .checkbox(
+                        &mut self.v.modified_settings.show_toasts,
+                        "Show in-app toasts",
+                    )
+                    .changed()
+                {
+                    self.v.settings_dirty = true;
+                }
+
+                if ui
+                    .checkbox(
+                        &mut self.v.modified_settings.show_notifications,
+                        "Show system notifications",
+                    )
+                    .changed()
+                {
+                    self.v.settings_dirty = true;
+                }
+
+                ui.with_layout(egui::Layout::bottom_up(egui::Align::TOP), |ui| {
+                    ui.horizontal(|ui| {
+                        if ui.button("Save settings").clicked() {
+                            self.v.settings_dirty = false;
+                            self.v.show_settings_window = false;
+
+                            self.settings = self.v.modified_settings.clone();
+                        }
+
+                        if ui
+                            .add_enabled(
+                                self.v.settings_dirty,
+                                egui::Button::new("Discard changes"),
+                            )
+                            .clicked()
+                        {
+                            self.v.settings_dirty = false;
+                            self.v.show_settings_window = false;
+
+                            self.v.modified_settings = self.settings.clone();
+                        }
+
+                        if ui.button("Restore to defaults").clicked() {
+                            self.v.settings_dirty = false;
+                            self.v.show_settings_window = false;
+
+                            self.settings = AppSettings::default();
+                            self.v.modified_settings = AppSettings::default();
+                        }
+                    });
+
+                    ui.separator();
+                });
             });
-        });
 
         if !show_window {
             self.v.show_settings_window = false;
@@ -735,27 +873,32 @@ impl UpdatesApp {
     }
 
     fn get_active_download(&self, title_id: &str, pkg: &PackageInfo) -> Option<&ActiveDownload> {
-        return self.v.download_queue
+        return self
+            .v
+            .download_queue
             .iter()
-            .find(| d | d.title_id == title_id && d.pkg_id == pkg.id());
-    } 
+            .find(|d| d.title_id == title_id && d.pkg_id == pkg.id());
+    }
 
     fn get_active_merge(&self, title_id: &str) -> Option<&ActiveMerge> {
-        return self.v.merge_queue
-            .iter()
-            .find(| d | d.title_id == title_id);
-    } 
+        return self.v.merge_queue.iter().find(|d| d.title_id == title_id);
+    }
 
     fn title_merge_status(&self, update: &UpdateInfo) -> ActiveMergeStatus {
         if let Some(active_merge) = self.get_active_merge(&update.title_id) {
             let progress = active_merge.part_progress as f32 / update.packages.len() as f32;
             return ActiveMergeStatus::Merging(progress);
-        } else if self.v.completed_merges.iter().any(|id| *id == update.title_id) {
+        } else if self
+            .v
+            .completed_merges
+            .iter()
+            .any(|id| *id == update.title_id)
+        {
             return ActiveMergeStatus::Merged;
         } else if self.v.failed_merges.iter().any(|id| *id == update.title_id) {
             return ActiveMergeStatus::Failed;
         }
-    
+
         return ActiveMergeStatus::NotStarted;
     }
 
@@ -763,51 +906,60 @@ impl UpdatesApp {
         let download = match self.get_active_download(title_id, pkg) {
             Some(d) => d,
             None => {
-                if self.v.completed_downloads.iter().any(| (id, pkg_id) | id == title_id && pkg_id == &pkg.id()) {
-                    return ActiveDownloadStatus::Completed
-                }
-                else if self.v.failed_downloads.iter().any(| (id, pkg_id) | id == title_id && pkg_id == &pkg.id()) {
-                    return ActiveDownloadStatus::Failed
+                if self
+                    .v
+                    .completed_downloads
+                    .iter()
+                    .any(|(id, pkg_id)| id == title_id && pkg_id == &pkg.id())
+                {
+                    return ActiveDownloadStatus::Completed;
+                } else if self
+                    .v
+                    .failed_downloads
+                    .iter()
+                    .any(|(id, pkg_id)| id == title_id && pkg_id == &pkg.id())
+                {
+                    return ActiveDownloadStatus::Failed;
                 }
 
-                return ActiveDownloadStatus::NotStarted
+                return ActiveDownloadStatus::NotStarted;
             }
         };
 
         match download.last_received_status {
             DownloadStatus::Progress(_) => {
-                return ActiveDownloadStatus::Downloading(download.progress as f32 / download.size as f32)
+                return ActiveDownloadStatus::Downloading(
+                    download.progress as f32 / download.size as f32,
+                )
             }
-            DownloadStatus::Verifying => {
-                return ActiveDownloadStatus::Verifying
-            }
-            _ => {
-                return ActiveDownloadStatus::NotStarted
-            }
+            DownloadStatus::Verifying => return ActiveDownloadStatus::Verifying,
+            _ => return ActiveDownloadStatus::NotStarted,
         }
     }
 
     fn pkg_merge_status(&self, title_id: &str, pkg: &PackageInfo) -> ActiveMergeStatus {
-        if pkg.part_number.is_none() { return ActiveMergeStatus::NotMergable; }
+        if pkg.part_number.is_none() {
+            return ActiveMergeStatus::NotMergable;
+        }
 
         let part_number = match pkg.part_number {
             Some(part_num) => part_num,
-            None => return ActiveMergeStatus::NotMergable
+            None => return ActiveMergeStatus::NotMergable,
         };
 
         if let Some(active_merge) = self.get_active_merge(title_id) {
             if active_merge.part_progress < part_number {
-                return ActiveMergeStatus::Merging(0.0)
+                return ActiveMergeStatus::Merging(0.0);
             } else {
-                return ActiveMergeStatus::Merged
+                return ActiveMergeStatus::Merged;
             }
         } else if self.v.completed_merges.iter().any(|id| id == title_id) {
-            return ActiveMergeStatus::Merged
+            return ActiveMergeStatus::Merged;
         } else if self.v.failed_merges.iter().any(|id| id == title_id) {
-            return ActiveMergeStatus::Failed
+            return ActiveMergeStatus::Failed;
         }
 
-        return ActiveMergeStatus::NotStarted
+        return ActiveMergeStatus::NotStarted;
     }
 }
 
@@ -817,7 +969,7 @@ enum ActiveDownloadStatus {
     Downloading(f32),
     Verifying,
     Completed,
-    Failed
+    Failed,
 }
 
 #[derive(PartialEq, Debug, Clone, Copy)]
@@ -826,5 +978,5 @@ enum ActiveMergeStatus {
     NotStarted,
     Merging(f32),
     Merged,
-    Failed
+    Failed,
 }
