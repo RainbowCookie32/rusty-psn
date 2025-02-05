@@ -1,5 +1,5 @@
 use std::convert::TryInto;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use sha1_smol::Sha1;
 
@@ -21,17 +21,20 @@ fn sanitize_title(title: &str) -> String {
     title.replace(|c| INVALID_CHARS.contains(&c), "_")
 }
 
-fn create_old_pkg_path(download_path: &PathBuf, serial: &str) -> PathBuf {
-    let mut target_path = download_path.clone();
-    target_path.push(serial);
-    target_path
+fn create_old_pkg_path<P>(download_path: P, serial: &str) -> PathBuf
+where
+    P: AsRef<Path>,
+{
+    download_path.as_ref().join(serial)
 }
 
-pub fn create_new_pkg_path(download_path: &PathBuf, serial: &str, title: &str) -> PathBuf {
-    let mut target_path = download_path.clone();
+pub fn create_new_pkg_path<P>(download_path: &P, serial: &str, title: &str) -> PathBuf
+where
+    P: AsRef<Path>,
+{
+    let target_path = download_path.as_ref();
     let sanitized_title = sanitize_title(title);
-    target_path.push(format!("{} - {}", serial, sanitized_title));
-    target_path
+    target_path.join(format!("{} - {}", serial, sanitized_title))
 }
 
 pub async fn create_pkg_file(
