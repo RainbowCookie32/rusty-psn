@@ -125,7 +125,7 @@ impl UpdateInfo {
                 // both when displaying the title and when trying to create a folder to put the files in.
                 let titles = &info.titles;
                 info.titles = titles
-                    .into_iter()
+                    .iter()
                     .map(|title| title.replace("\n", " "))
                     .collect();
             }
