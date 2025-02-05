@@ -603,7 +603,7 @@ impl UpdatesApp {
     
                     for pkg in update.packages.iter() {
                         // Avoid duplicates by checking if there's already a download for this serial and version on the queue.
-                        if self.get_active_download(&title_id, pkg).is_none() {
+                        if self.get_active_download(title_id, pkg).is_none() {
                             info!("Downloading update {} for serial {title_id} (group)", pkg.id());
                             self.add_download(self.start_download(title_id.to_string(), title.clone(), pkg.clone()));
                         }
