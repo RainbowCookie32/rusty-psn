@@ -310,7 +310,7 @@ impl PackageInfo {
         let file_name = response
             .url()
             .path_segments()
-            .and_then(|s| s.last())
+            .and_then(|s| s.into_iter().next_back())
             .and_then(|n| {
                 if n.is_empty() {
                     None
@@ -409,7 +409,7 @@ impl PackageInfo {
 
         let file_name = pkg_url
             .path_segments()
-            .and_then(|s| s.last())
+            .and_then(|s| s.into_iter().next_back())
             .and_then(|n| {
                 if n.is_empty() {
                     None
