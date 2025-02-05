@@ -245,11 +245,11 @@ impl UpdateInfo {
     }
 }
 
-pub fn parse_title_id(title_id: &String) -> String {
-    return title_id
+pub fn parse_title_id(title_id: &str) -> String {
+    title_id
         .trim()
         .replace("-", "") // strip the dash that some sites put in a title id, eg. BCES-xxxxx
-        .to_uppercase();
+        .to_uppercase()
 }
 
 #[derive(Clone)]
