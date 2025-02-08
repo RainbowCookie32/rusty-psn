@@ -1,8 +1,5 @@
 // On release builds, this hides the console window that's created on Windows.
-#![cfg_attr(
-    all(not(debug_assertions), feature = "egui"),
-    windows_subsystem = "windows"
-)]
+#![cfg_attr(all(not(debug_assertions), feature = "egui"), windows_subsystem = "windows")]
 
 use clap::Parser;
 use flexi_logger::Logger;
@@ -37,11 +34,7 @@ struct Args {
     )]
     silent: bool,
     #[cfg(feature = "cli")]
-    #[clap(
-        short,
-        long,
-        help = "Target folder to save the downloaded update files to."
-    )]
+    #[clap(short, long, help = "Target folder to save the downloaded update files to.")]
     destination_path: Option<PathBuf>,
     #[clap(
         long,

@@ -124,10 +124,7 @@ impl UpdateInfo {
                 // For some ungodly reason, the title has a newline (/n), which of course causes issues
                 // both when displaying the title and when trying to create a folder to put the files in.
                 let titles = &info.titles;
-                info.titles = titles
-                    .iter()
-                    .map(|title| title.replace("\n", " "))
-                    .collect();
+                info.titles = titles.iter().map(|title| title.replace("\n", " ")).collect();
             }
             Err(e) => match e {
                 parser::ParseError::ErrorCode(reason) => {
@@ -137,9 +134,7 @@ impl UpdateInfo {
 
                     return Err(UpdateError::UnhandledErrorResponse(reason));
                 }
-                parser::ParseError::XmlParsing(reason) => {
-                    return Err(UpdateError::XmlParsing(reason))
-                }
+                parser::ParseError::XmlParsing(reason) => return Err(UpdateError::XmlParsing(reason)),
             },
         }
 
@@ -151,29 +146,14 @@ impl UpdateInfo {
         info.packages = Vec::new(); // previously fetched manifest packages are moved out of packages list and a new list of part packages will be filled-in instead
 
         for package in parent_manifest_packages.drain(..) {
-            let manifest_response = client
-                .get(&package.manifest_url)
-                .send()
-                .await
-                .map_err(UpdateError::Reqwest)?;
-            let manifest_response_txt = manifest_response
-                .text()
-                .await
-                .map_err(UpdateError::Reqwest)?;
-            match manifest_parser::parse_manifest_response(
-                manifest_response_txt,
-                &package,
-                &mut info,
-            ) {
+            let manifest_response = client.get(&package.manifest_url).send().await.map_err(UpdateError::Reqwest)?;
+            let manifest_response_txt = manifest_response.text().await.map_err(UpdateError::Reqwest)?;
+            match manifest_parser::parse_manifest_response(manifest_response_txt, &package, &mut info) {
                 Ok(()) => {}
                 Err(e) => {
                     match e {
-                        manifest_parser::ParseError::NoPartsFound => {
-                            return Err(UpdateError::NoUpdatesAvailable)
-                        }
-                        manifest_parser::ParseError::JsonParsing(reason) => {
-                            return Err(UpdateError::ManifestParsing(reason))
-                        }
+                        manifest_parser::ParseError::NoPartsFound => return Err(UpdateError::NoUpdatesAvailable),
+                        manifest_parser::ParseError::JsonParsing(reason) => return Err(UpdateError::ManifestParsing(reason)),
                     };
                 }
             }
@@ -182,11 +162,7 @@ impl UpdateInfo {
         Ok(info)
     }
 
-    pub async fn merge_parts(
-        &self,
-        tx: Sender<MergeStatus>,
-        download_path: &PathBuf,
-    ) -> Result<(), MergeError> {
+    pub async fn merge_parts(&self, tx: Sender<MergeStatus>, download_path: &PathBuf) -> Result<(), MergeError> {
         if !self.packages.iter().all(|pkg| pkg.part_number.is_some()) {
             return Err(MergeError::PackagesUnmergable(String::from(
                 "some packages for the update are not a partial package",
@@ -195,8 +171,7 @@ impl UpdateInfo {
 
         let mut packages_sorted_by_part_number = self.packages.clone();
         packages_sorted_by_part_number.sort_by_key(|pkg| pkg.part_number.unwrap());
-        let package_download_path =
-            create_new_pkg_path(&download_path, &self.title_id, &self.title());
+        let package_download_path = create_new_pkg_path(&download_path, &self.title_id, &self.title());
 
         info!("Starting merge for {}", self.title());
 
@@ -225,13 +200,8 @@ impl UpdateInfo {
             package_path.push(&file_name);
             match copy_pkg_file(&package_path, &merged_path, package.offset).await {
                 Ok(read_length) => {
-                    tx.send(MergeStatus::PartProgress(part_number))
-                        .await
-                        .unwrap();
-                    info!(
-                        "merged {} bytes from {} to {}",
-                        read_length, file_name, merged_file_name
-                    );
+                    tx.send(MergeStatus::PartProgress(part_number)).await.unwrap();
+                    info!("merged {} bytes from {} to {}", read_length, file_name, merged_file_name);
                 }
                 Err(err) => {
                     error!("could not merge files: {}", err.to_string());
@@ -301,29 +271,18 @@ impl PackageInfo {
             .build()
             .map_err(DownloadError::Reqwest)?;
 
-        let mut response = client
-            .get(&self.url)
-            .send()
-            .await
-            .map_err(DownloadError::Reqwest)?;
+        let mut response = client.get(&self.url).send().await.map_err(DownloadError::Reqwest)?;
 
         let file_name = response
             .url()
             .path_segments()
             .and_then(|s| s.into_iter().next_back())
-            .and_then(|n| {
-                if n.is_empty() {
-                    None
-                } else {
-                    Some(n.to_string())
-                }
-            })
+            .and_then(|n| if n.is_empty() { None } else { Some(n.to_string()) })
             .unwrap_or_else(|| String::from("update.pkg"));
 
         info!("Response received, file name is {file_name}");
 
-        let mut pkg_file =
-            crate::utils::create_pkg_file(download_path, &serial, &title, &file_name).await?;
+        let mut pkg_file = crate::utils::create_pkg_file(download_path, &serial, &title, &file_name).await?;
 
         tx.send(DownloadStatus::Verifying).await.unwrap();
 
@@ -340,21 +299,14 @@ impl PackageInfo {
 
             let mut received_data = 0;
 
-            while let Some(download_chunk) =
-                response.chunk().await.map_err(DownloadError::Reqwest)?
-            {
+            while let Some(download_chunk) = response.chunk().await.map_err(DownloadError::Reqwest)? {
                 let download_chunk = download_chunk.as_ref();
                 let download_chunk_len = download_chunk.len() as u64;
 
                 received_data += download_chunk_len;
-                info!(
-                    "Received a {} bytes chunk for {serial} {}",
-                    download_chunk_len, self.version
-                );
+                info!("Received a {} bytes chunk for {serial} {}", download_chunk_len, self.version);
 
-                tx.send(DownloadStatus::Progress(download_chunk_len))
-                    .await
-                    .unwrap();
+                tx.send(DownloadStatus::Progress(download_chunk_len)).await.unwrap();
 
                 if let Err(e) = pkg_file.write_all(download_chunk).await {
                     error!("Failed to write chunk data: {e}");
@@ -368,7 +320,10 @@ impl PackageInfo {
             }
 
             if received_data < self.size {
-                warn!("Received less data than expected for pkg file! Expected {} bytes, received {} bytes.", self.size, received_data)
+                warn!(
+                    "Received less data than expected for pkg file! Expected {} bytes, received {} bytes.",
+                    self.size, received_data
+                )
             }
 
             info!(
@@ -406,16 +361,13 @@ impl PackageInfo {
             Err(_) => return None,
         };
 
-        let file_name = pkg_url
-            .path_segments()
-            .and_then(|s| s.into_iter().next_back())
-            .and_then(|n| {
-                if n.is_empty() {
-                    None
-                } else {
-                    Some(n.to_string())
-                }
-            });
+        let file_name = pkg_url.path_segments().and_then(|s| s.into_iter().next_back()).and_then(|n| {
+            if n.is_empty() {
+                None
+            } else {
+                Some(n.to_string())
+            }
+        });
 
         file_name
     }

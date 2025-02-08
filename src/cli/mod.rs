@@ -16,9 +16,7 @@ pub fn start_app(args: Args) {
 
     let titles = args.titles[0].split(' ');
     let silent_mode = args.silent;
-    let destination_path = args
-        .destination_path
-        .unwrap_or_else(|| PathBuf::from("pkgs/"));
+    let destination_path = args.destination_path.unwrap_or_else(|| PathBuf::from("pkgs/"));
 
     if silent_mode {
         info!("App started in silent mode!");
@@ -29,12 +27,7 @@ pub fn start_app(args: Args) {
 
         let promises = titles
             .into_iter()
-            .map(|t| {
-                (
-                    t.to_string(),
-                    Promise::spawn_async(UpdateInfo::get_info(t.to_string())),
-                )
-            })
+            .map(|t| (t.to_string(), Promise::spawn_async(UpdateInfo::get_info(t.to_string()))))
             .collect::<Vec<(String, Promise<Result<UpdateInfo, UpdateError>>)>>();
 
         if !silent_mode {
@@ -178,10 +171,7 @@ pub fn start_app(args: Args) {
                 cursor::MoveTo(0, 0)
             )
             .unwrap();
-            println!(
-                "{} {} - Downloading update(s): {}",
-                update.title_id, title, updates
-            );
+            println!("{} {} - Downloading update(s): {}", update.title_id, title, updates);
         }
 
         for (idx, pkg) in update.packages.iter().enumerate() {
@@ -196,9 +186,7 @@ pub fn start_app(args: Args) {
             let dpkg = pkg.clone();
             let dtitle = title.clone();
 
-            let promise = Promise::spawn_async(async move {
-                dpkg.start_download(tx, download_path, serial, dtitle).await
-            });
+            let promise = Promise::spawn_async(async move { dpkg.start_download(tx, download_path, serial, dtitle).await });
 
             let mut stdout = std::io::stdout();
             let mut downloaded = 0;
@@ -211,7 +199,12 @@ pub fn start_app(args: Args) {
                         if let Err(e) = result {
                             match e {
                                 DownloadError::HashMismatch(short_on_data) => {
-                                    error!("Download of {} {} failed: hash mismatch. (short on data: {})", update.title_id, pkg.id(), short_on_data);
+                                    error!(
+                                        "Download of {} {} failed: hash mismatch. (short on data: {})",
+                                        update.title_id,
+                                        pkg.id(),
+                                        short_on_data
+                                    );
                                     println!("Error downloading update: hash mismatch on downloaded file.");
 
                                     if *short_on_data {
@@ -219,19 +212,11 @@ pub fn start_app(args: Args) {
                                     }
                                 }
                                 DownloadError::Tokio(e) => {
-                                    error!(
-                                        "Download of {} {} failed: {e}",
-                                        update.title_id,
-                                        pkg.id()
-                                    );
+                                    error!("Download of {} {} failed: {e}", update.title_id, pkg.id());
                                     println!("Error downloading update: {e}.")
                                 }
                                 DownloadError::Reqwest(e) => {
-                                    error!(
-                                        "Download of {} {} failed: {e}",
-                                        update.title_id,
-                                        pkg.id()
-                                    );
+                                    error!("Download of {} {} failed: {e}", update.title_id, pkg.id());
                                     println!("Error downloading update: {e}.")
                                 }
                             }
@@ -271,10 +256,7 @@ pub fn start_app(args: Args) {
                                             cursor::SavePosition
                                         )
                                         .unwrap();
-                                        print!(
-                                            "        {} - {title} | Verifying checksum... ",
-                                            pkg.id()
-                                        );
+                                        print!("        {} - {title} | Verifying checksum... ", pkg.id());
                                         stdout.flush().unwrap();
                                     }
                                 }
@@ -300,10 +282,7 @@ pub fn start_app(args: Args) {
                                             cursor::SavePosition
                                         )
                                         .unwrap();
-                                        println!(
-                                            "        {} - {title} | Download failed. ",
-                                            pkg.id()
-                                        );
+                                        println!("        {} - {title} | Download failed. ", pkg.id());
                                         stdout.flush().unwrap();
                                     }
                                 }

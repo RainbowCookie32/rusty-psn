@@ -37,12 +37,7 @@ where
     target_path.join(format!("{} - {}", serial, sanitized_title))
 }
 
-pub async fn create_pkg_file(
-    download_path: PathBuf,
-    serial: &str,
-    title: &str,
-    pkg_name: &str,
-) -> Result<File, DownloadError> {
+pub async fn create_pkg_file(download_path: PathBuf, serial: &str, title: &str, pkg_name: &str) -> Result<File, DownloadError> {
     let mut target_path = create_new_pkg_path(&download_path, serial, title);
 
     // Check for the old path format.
@@ -85,11 +80,7 @@ pub async fn create_pkg_file(
 }
 
 const CHUNK_SIZE: usize = 1024 * 1024 * 128;
-pub async fn hash_file(
-    file: &mut File,
-    hash: &str,
-    hash_whole_file: bool,
-) -> Result<bool, DownloadError> {
+pub async fn hash_file(file: &mut File, hash: &str, hash_whole_file: bool) -> Result<bool, DownloadError> {
     let mut hasher = Sha1::new();
 
     // Last 0x20 bytes are the SHA1 hash for PS3 updates. PS4 updates don't include hash suffix.
@@ -108,9 +99,7 @@ pub async fn hash_file(
 
     // Write operations during the download move the internal seek pointer.
     // Resetting it to 0 makes reader actually read the whole thing.
-    file.seek(SeekFrom::Start(0))
-        .await
-        .map_err(DownloadError::Tokio)?;
+    file.seek(SeekFrom::Start(0)).await.map_err(DownloadError::Tokio)?;
 
     let mut reader = BufReader::with_capacity(CHUNK_SIZE, file);
     let mut processed_length = 0;

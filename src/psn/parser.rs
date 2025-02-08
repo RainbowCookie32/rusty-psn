@@ -48,9 +48,7 @@ pub fn parse_response(response: String, info: &mut UpdateInfo) -> Result<(), Par
                         for attribute in e.attributes().filter_map(|a| a.ok()) {
                             match attribute.key.as_ref() {
                                 b"version" => {
-                                    let value = attribute
-                                        .unescape_value()
-                                        .map_err(ParseError::XmlParsing)?;
+                                    let value = attribute.unescape_value().map_err(ParseError::XmlParsing)?;
 
                                     let mut package = PackageInfo::empty();
                                     package.version = value.to_string();
@@ -59,9 +57,7 @@ pub fn parse_response(response: String, info: &mut UpdateInfo) -> Result<(), Par
                                 }
                                 b"size" => {
                                     if let Some(last) = info.packages.last_mut() {
-                                        let value = attribute
-                                            .unescape_value()
-                                            .map_err(ParseError::XmlParsing)?;
+                                        let value = attribute.unescape_value().map_err(ParseError::XmlParsing)?;
                                         let parsed_value = value.parse::<u64>().unwrap_or_default();
 
                                         last.size = parsed_value;
@@ -69,25 +65,19 @@ pub fn parse_response(response: String, info: &mut UpdateInfo) -> Result<(), Par
                                 }
                                 b"sha1sum" => {
                                     if let Some(last) = info.packages.last_mut() {
-                                        let value = attribute
-                                            .unescape_value()
-                                            .map_err(ParseError::XmlParsing)?;
+                                        let value = attribute.unescape_value().map_err(ParseError::XmlParsing)?;
                                         last.sha1sum = value.to_string();
                                     }
                                 }
                                 b"url" => {
                                     if let Some(last) = info.packages.last_mut() {
-                                        let value = attribute
-                                            .unescape_value()
-                                            .map_err(ParseError::XmlParsing)?;
+                                        let value = attribute.unescape_value().map_err(ParseError::XmlParsing)?;
                                         last.url = value.to_string();
                                     }
                                 }
                                 b"manifest_url" => {
                                     if let Some(last) = info.packages.last_mut() {
-                                        let value = attribute
-                                            .unescape_value()
-                                            .map_err(ParseError::XmlParsing)?;
+                                        let value = attribute.unescape_value().map_err(ParseError::XmlParsing)?;
                                         last.manifest_url = value.to_string();
                                     }
                                 }
@@ -100,9 +90,7 @@ pub fn parse_response(response: String, info: &mut UpdateInfo) -> Result<(), Par
                     }
                     b"Code" => {
                         if !err_encountered {
-                            warn!(
-                                "Code tag encountered without a preceeding Error tag, skipping it"
-                            );
+                            warn!("Code tag encountered without a preceeding Error tag, skipping it");
                             continue;
                         }
 
@@ -126,8 +114,7 @@ pub fn parse_response(response: String, info: &mut UpdateInfo) -> Result<(), Par
                     for attribute in e.attributes().filter_map(|a| a.ok()) {
                         match attribute.key.as_ref() {
                             b"version" => {
-                                let value =
-                                    attribute.unescape_value().map_err(ParseError::XmlParsing)?;
+                                let value = attribute.unescape_value().map_err(ParseError::XmlParsing)?;
 
                                 let mut package = PackageInfo::empty();
                                 package.version = value.to_string();
@@ -136,9 +123,7 @@ pub fn parse_response(response: String, info: &mut UpdateInfo) -> Result<(), Par
                             }
                             b"size" => {
                                 if let Some(last) = info.packages.last_mut() {
-                                    let value = attribute
-                                        .unescape_value()
-                                        .map_err(ParseError::XmlParsing)?;
+                                    let value = attribute.unescape_value().map_err(ParseError::XmlParsing)?;
                                     let parsed_value = value.parse::<u64>().unwrap_or_default();
 
                                     last.size = parsed_value;
@@ -146,17 +131,13 @@ pub fn parse_response(response: String, info: &mut UpdateInfo) -> Result<(), Par
                             }
                             b"sha1sum" => {
                                 if let Some(last) = info.packages.last_mut() {
-                                    let value = attribute
-                                        .unescape_value()
-                                        .map_err(ParseError::XmlParsing)?;
+                                    let value = attribute.unescape_value().map_err(ParseError::XmlParsing)?;
                                     last.sha1sum = value.to_string();
                                 }
                             }
                             b"url" => {
                                 if let Some(last) = info.packages.last_mut() {
-                                    let value = attribute
-                                        .unescape_value()
-                                        .map_err(ParseError::XmlParsing)?;
+                                    let value = attribute.unescape_value().map_err(ParseError::XmlParsing)?;
                                     last.url = value.to_string();
                                 }
                             }

@@ -29,10 +29,7 @@ impl fmt::Display for PlaformVariant {
 }
 
 pub fn get_platform_variant(title_id: &str) -> Option<PlaformVariant> {
-    if ["NP", "BL", "BC"]
-        .iter()
-        .any(|&prefix| title_id.starts_with(prefix))
-    {
+    if ["NP", "BL", "BC"].iter().any(|&prefix| title_id.starts_with(prefix)) {
         return Some(PlaformVariant::PS3);
     }
 
@@ -43,19 +40,14 @@ pub fn get_platform_variant(title_id: &str) -> Option<PlaformVariant> {
     None
 }
 
-pub fn get_update_info_url(
-    title_id: &str,
-    platform_variant: PlaformVariant,
-) -> Result<String, UpdateError> {
+pub fn get_update_info_url(title_id: &str, platform_variant: PlaformVariant) -> Result<String, UpdateError> {
     match platform_variant {
         PlaformVariant::PS3 => Ok(format!(
             "https://a0.ww.np.dl.playstation.net/tpl/np/{0}/{0}-ver.xml",
             title_id
         )),
         PlaformVariant::PS4 => {
-            let key = match hex::decode(
-                "AD62E37F905E06BC19593142281C112CEC0E7EC3E97EFDCAEFCDBAAFA6378D84",
-            ) {
+            let key = match hex::decode("AD62E37F905E06BC19593142281C112CEC0E7EC3E97EFDCAEFCDBAAFA6378D84") {
                 Ok(key) => key,
                 Err(_) => return Err(UpdateError::InvalidSerial),
             };
@@ -77,11 +69,7 @@ pub fn get_update_info_url(
 }
 
 const MERGE_CHUNK_SIZE: usize = 1024 * 1024 * 128;
-pub async fn copy_pkg_file(
-    src_path: &PathBuf,
-    target_path: &PathBuf,
-    offset: u64,
-) -> Result<u64, Error> {
+pub async fn copy_pkg_file(src_path: &PathBuf, target_path: &PathBuf, offset: u64) -> Result<u64, Error> {
     let src_file = OpenOptions::default()
         .create(false)
         .read(true)

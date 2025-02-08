@@ -35,8 +35,7 @@ pub fn parse_manifest_response(
     parent_manifest_package: &PackageInfo,
     info: &mut UpdateInfo,
 ) -> Result<(), ParseError> {
-    let manifest: Manifest =
-        serde_json::from_str(response.as_ref()).map_err(ParseError::JsonParsing)?;
+    let manifest: Manifest = serde_json::from_str(response.as_ref()).map_err(ParseError::JsonParsing)?;
 
     if manifest.pieces.is_empty() {
         return Err(ParseError::NoPartsFound);
