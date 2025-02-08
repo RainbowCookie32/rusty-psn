@@ -171,12 +171,16 @@ impl UpdatesApp {
 
         fonts.font_data.insert(
             "noto".to_owned(),
-            std::sync::Arc::new(egui::FontData::from_static(include_bytes!("../../resources/NotoSans-Regular.ttf"))),
+            std::sync::Arc::new(egui::FontData::from_static(include_bytes!(
+                "../../resources/NotoSans-Regular.ttf"
+            ))),
         );
 
         fonts.font_data.insert(
             "notojp".to_owned(),
-            std::sync::Arc::new(egui::FontData::from_static(include_bytes!("../../resources/NotoSansJP-Regular.otf"))),
+            std::sync::Arc::new(egui::FontData::from_static(include_bytes!(
+                "../../resources/NotoSansJP-Regular.otf"
+            ))),
         );
 
         fonts
