@@ -12,16 +12,18 @@ page and download the file you'll use from the Assets section:
 
 - If you want to use the GUI version of rusty-psn, then download the
   `rusty-psn-egui-windows.zip`, `rusty-psn-egui-linux.zip` or
-  `rusty-psn-egui-macos.zip` file, depending on your OS.
+  `rusty-psn-egui-macos-universal.zip` file, depending on your OS.
 
 - If you want to use the CLI version of rusty-psn, then download the
   `rusty-psn-cli-windows.zip`, `rusty-psn-cli-linux.zip` or
-  `rusty-psn-cli-macos.zip` file, depending on your OS.
+  `rusty-psn-cli-macos-universal.zip` file, depending on your OS.
 
 After the selected file is downloaded, **extract it** and run the executable
 file. For the Linux egui builds, you'll need to install some dependencies
 (sourced from
-[egui's README](https://github.com/emilk/egui/blob/0.26.2/README.md)):``
+[egui's README](https://github.com/emilk/egui/blob/0.26.2/README.md)):``.
+For macOS egui builds, it's recommended to move the extracted bundle into the 
+Applications folder.
 
 - Ubuntu:
 
