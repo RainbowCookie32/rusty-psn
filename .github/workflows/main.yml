@@ -16,19 +16,52 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Rust Cache
-        uses: Swatinem/rust-cache@v2.7.3
+        uses: Swatinem/rust-cache@v2
         with:
           key: ${{ matrix.feature }}-${{ matrix.os }}
           cache-on-failure: "true"
+
+      - name: Get Cargo.toml version
+        id: cargo_version
+        uses: dante-signal31/rust-app-version@v1.2.0
 
       - name: Install dependencies
         if: ${{ matrix.os == 'ubuntu-latest' && matrix.feature == 'egui' }}
         run: |
           sudo apt update
           sudo apt-get install libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev libspeechd-dev libxkbcommon-dev libssl-dev libgtk-3-dev
+      
+      - name: Add x86 target (macOS)
+        if: ${{ matrix.os == 'macos-latest' }}
+        run: rustup target add x86_64-apple-darwin
 
-      - name: Build rusty-psn
+      - name: Build rusty-psn (Linux/Windows)
+        if: ${{ matrix.os != 'macos-latest' }}
         run: cargo build --release --no-default-features --features ${{ matrix.feature }}
+
+      - name: Build rusty-psn (macOS)
+        if: ${{ matrix.os == 'macos-latest' }}
+        run: |
+          cargo build --release --no-default-features --features ${{ matrix.feature }}
+          cargo build --release --no-default-features --features ${{ matrix.feature }} --target x86_64-apple-darwin
+      
+      - name: Make universal binary (macOS)
+        if: ${{ matrix.os == 'macos-latest' }}
+        run: |
+          mkdir target/release/universal
+          lipo -create -output target/release/universal/rusty-psn target/release/rusty-psn target/x86_64-apple-darwin/release/rusty-psn
+
+      - name: Make app bundle (macOS - egui)
+        if: ${{ matrix.os == 'macos-latest' && matrix.feature == 'egui' }}
+        run: |
+          mkdir rusty-psn.app
+          mkdir rusty-psn.app/Contents
+          mkdir rusty-psn.app/Contents/MacOS
+
+          cp resources/Info.plist rusty-psn.app/Contents
+          sed -i '' -e 's/%RPSN_VERSION%/${{ steps.cargo_version.outputs.app_version }}/g' rusty-psn.app/Contents/Info.plist
+
+          cp target/release/universal/rusty-psn rusty-psn.app/Contents/MacOS
 
       - name: Move binary (Linux)
         if: ${{ matrix.os == 'ubuntu-latest' }}
@@ -36,11 +69,17 @@ jobs:
           mkdir result
           cp target/release/rusty-psn result
 
-      - name: Move binary (MacOS)
-        if: ${{ matrix.os == 'macos-latest' }}
+      - name: Move binary (MacOS - cli)
+        if: ${{ matrix.os == 'macos-latest' && matrix.feature == 'cli' }}
         run: |
           mkdir result
-          cp target/release/rusty-psn result
+          cp target/release/universal/rusty-psn result
+
+      - name: Move binary (MacOS - egui)
+        if: ${{ matrix.os == 'macos-latest' && matrix.feature == 'egui' }}
+        run: |
+          mkdir result
+          cp rusty-psn.app result
 
       - name: Move binary (Windows)
         if: ${{ matrix.os == 'windows-latest' }}
@@ -59,7 +98,7 @@ jobs:
         if: ${{ matrix.os == 'macos-latest' }}
         uses: actions/upload-artifact@v4
         with:
-          name: rusty-psn-${{ matrix.feature }}-macos
+          name: rusty-psn-${{ matrix.feature }}-macos-universal
           path: result
 
       - name: Upload artifact (Windows)
@@ -73,15 +112,20 @@ jobs:
     needs: build_matrix
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/master'
+    permissions:
+      contents: write
+
     steps:
-      - name: rust_app_version
+      - name: Get Cargo.toml version
         id: cargo_version
         uses: dante-signal31/rust-app-version@v1.2.0
+
       - name: Download artifacts
         uses: actions/download-artifact@v4.1.9
         with:
           path: ./artifacts
           patters: rusty-psn*
+
       - name: Create release
         uses: softprops/action-gh-release@v2.2.1
         with:
