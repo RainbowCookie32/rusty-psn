@@ -80,7 +80,7 @@ jobs:
         if: ${{ matrix.os == 'macos-latest' && matrix.feature == 'egui' }}
         run: |
           mkdir result
-          cp rusty-psn.app result
+          cp -R rusty-psn.app result
 
       - name: Move binary (Windows)
         if: ${{ matrix.os == 'windows-latest' }}
