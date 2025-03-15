@@ -1,8 +1,11 @@
 // On release builds, this hides the console window that's created on Windows.
 #![cfg_attr(all(not(debug_assertions), feature = "egui"), windows_subsystem = "windows")]
 
+#[cfg(target_os = "macos")]
+extern crate dirs;
+
 use clap::Parser;
-use flexi_logger::Logger;
+use flexi_logger::{Logger, LoggerHandle};
 #[cfg(feature = "cli")]
 use std::path::PathBuf;
 
@@ -45,19 +48,7 @@ struct Args {
 
 fn main() {
     let args = Args::parse();
-
-    let mut logger = Logger::try_with_str("info").expect("Failed to create logger");
-
-    if args.no_log_file {
-        logger = logger.do_not_log();
-    } else {
-        logger = logger.log_to_file(flexi_logger::FileSpec::default());
-    }
-
-    logger
-        .duplicate_to_stdout(flexi_logger::Duplicate::Error)
-        .start()
-        .expect("Failed to start logger!");
+    let _logger_handle = init_log(args.no_log_file);
 
     #[cfg(feature = "cli")]
     {
@@ -76,4 +67,47 @@ fn main() {
         )
         .expect("Failed to run egui app");
     }
+}
+
+#[cfg(target_os = "macos")]
+fn init_log(no_log_file: bool) -> LoggerHandle {
+    let mut logger = Logger::try_with_str("info").expect("Failed to create logger");
+
+    if no_log_file {
+        logger = logger.do_not_log();
+    } else {
+        let mut logs_dir = dirs::config_dir().unwrap();
+        logs_dir.push("rusty-psn");
+
+        match std::fs::create_dir_all(&logs_dir) {
+            Ok(_) => info!("Created directory for updates"),
+            Err(e) => match e.kind() {
+                std::io::ErrorKind::AlreadyExists => {}
+                _ => panic!("{}", e),
+            },
+        }
+
+        logger = logger.log_to_file(flexi_logger::FileSpec::default().directory(logs_dir));
+    }
+
+    logger
+        .duplicate_to_stdout(flexi_logger::Duplicate::Error)
+        .start()
+        .expect("Failed to start logger!")
+}
+
+#[cfg(not(target_os = "macos"))]
+fn init_log(no_log_file: bool) -> LoggerHandle {
+    let mut logger = Logger::try_with_str("info").expect("Failed to create logger");
+
+    if no_log_file {
+        logger = logger.do_not_log();
+    } else {
+        logger = logger.log_to_file(flexi_logger::FileSpec::default());
+    }
+
+    logger
+        .duplicate_to_stdout(flexi_logger::Duplicate::Error)
+        .start()
+        .expect("Failed to start logger!")
 }
