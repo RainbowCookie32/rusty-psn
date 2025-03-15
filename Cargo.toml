@@ -6,6 +6,7 @@ edition = "2018"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+dirs = "6.0.0"
 bytesize = "2.0.1"
 copypasta = "0.10.1"
 sha1_smol = "1.0.1"

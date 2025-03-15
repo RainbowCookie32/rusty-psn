@@ -45,9 +45,23 @@ struct AppSettings {
 }
 
 impl Default for AppSettings {
+    #[cfg(not(target_os = "macos"))]
     fn default() -> AppSettings {
         AppSettings {
             pkg_download_path: PathBuf::from("pkgs/"),
+            show_toasts: true,
+            show_notifications: false,
+        }
+    }
+
+    #[cfg(target_os = "macos")]
+    fn default() -> AppSettings {
+        let mut downloads_dir = dirs::download_dir().unwrap();
+        downloads_dir.push("rusty-psn");
+        downloads_dir.push("pkgs");
+
+        AppSettings {
+            pkg_download_path: PathBuf::from(downloads_dir),
             show_toasts: true,
             show_notifications: false,
         }
