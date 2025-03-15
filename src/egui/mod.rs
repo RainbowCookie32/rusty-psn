@@ -739,7 +739,16 @@ impl UpdatesApp {
 
                     if ui.button("Reset").clicked() {
                         self.v.settings_dirty = true;
-                        self.v.modified_settings.pkg_download_path = PathBuf::from("/pkgs");
+
+                        if cfg!(target_os = "macos") {
+                            let mut downloads_dir = dirs::download_dir().unwrap();
+                            downloads_dir.push("rusty-psn");
+                            downloads_dir.push("pkgs");
+
+                            self.v.modified_settings.pkg_download_path = downloads_dir;
+                        } else {
+                            self.v.modified_settings.pkg_download_path = PathBuf::from("/pkgs");
+                        }
                     }
                 });
 
