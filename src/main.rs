@@ -76,7 +76,7 @@ fn init_log(no_log_file: bool) -> LoggerHandle {
     if no_log_file {
         logger = logger.do_not_log();
     } else {
-        let mut logs_dir = dirs::config_dir().unwrap();
+        let mut logs_dir = dirs::data_local_dir().unwrap();
         logs_dir.push("rusty-psn");
 
         match std::fs::create_dir_all(&logs_dir) {
