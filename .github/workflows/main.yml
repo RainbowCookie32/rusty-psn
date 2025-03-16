@@ -117,6 +117,8 @@ jobs:
       contents: write
 
     steps:
+      - uses: actions/checkout@v4
+      
       - name: Get Cargo.toml version
         id: cargo_version
         uses: dante-signal31/rust-app-version@v1.2.0
