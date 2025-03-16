@@ -126,7 +126,7 @@ jobs:
       - name: Download artifacts
         uses: actions/download-artifact@v4.1.9
         with:
-          path: ./artifacts
+          path: artifacts
           pattern: rusty-psn*
 
       - name: Create release
@@ -134,7 +134,7 @@ jobs:
         with:
           name: "v${{ steps.cargo_version.outputs.app_version }}"
           tag_name: "v${{ steps.cargo_version.outputs.app_version }}"
-          files: "./artifacts/*"
+          files: "artifacts/rusty-psn*"
           generate_release_notes: true
           make_latest: true
 
