@@ -12,6 +12,7 @@ use serde::{Deserialize, Serialize};
 
 use tokio::runtime::Runtime;
 use tokio::sync::mpsc;
+use tokio::task::yield_now;
 
 use crate::psn::*;
 
@@ -210,11 +211,26 @@ impl UpdatesApp {
 
         cc.egui_ctx.set_fonts(fonts);
 
-        if let Some(storage) = cc.storage {
+        let app: Self = if let Some(storage) = cc.storage {
             eframe::get_value(storage, eframe::APP_KEY).unwrap_or_default()
         } else {
             Default::default()
-        }
+        };
+
+        // Execute tokio runtime in its own thread.
+        // Prevents egui blocking the same thread that tokio runtime is running on,
+        // which can lead to network and io tasks being blocked when the application
+        // is minimised or otherwise suspended by egui.
+        let handle = app.v.rt.handle().clone();
+        std::thread::spawn(move || {
+            handle.block_on(async {
+                loop {
+                    yield_now().await;
+                }
+            })
+        });
+
+        return app;
     }
 
     fn handle_search_promise(&mut self, toasts: &mut Vec<(String, ToastLevel)>) -> Option<()> {
