@@ -8,6 +8,8 @@ use clap::Parser;
 use flexi_logger::{Logger, LoggerHandle};
 #[cfg(feature = "cli")]
 use std::path::PathBuf;
+use std::sync::Arc;
+use tokio::{runtime::Runtime, sync::Notify};
 
 #[macro_use]
 extern crate log;
@@ -60,12 +62,30 @@ fn main() {
     {
         info!("starting egui app");
 
+        // Execute tokio runtime in its own thread.
+        // Prevents egui blocking the same thread that tokio runtime is running on,
+        // which can lead to network and io tasks being blocked when the application
+        // is minimised or otherwise suspended by egui.
+        let rt = Runtime::new().unwrap();
+        let rt_handle = rt.handle().clone();
+        let notify_main = Arc::new(Notify::new());
+        let notify_thread = notify_main.clone();
+        let rt_thread = std::thread::spawn(move || {
+            rt.block_on(async {
+                notify_thread.notified().await; // Wait for a shutdown signal.
+            })
+        });
+
         eframe::run_native(
             "rusty-psn",
             eframe::NativeOptions::default(),
-            Box::new(|cc| Ok(Box::new(egui::UpdatesApp::new(cc)))),
+            Box::new(|cc| Ok(Box::new(egui::UpdatesApp::new(cc, rt_handle)))),
         )
         .expect("Failed to run egui app");
+
+        // Signal runtime on a separate thread to shutdown gracefully.
+        notify_main.notify_one();
+        let _ = rt_thread.join();
     }
 }
 
