@@ -10,7 +10,7 @@ use notify_rust::Notification;
 use poll_promise::Promise;
 use serde::{Deserialize, Serialize};
 
-use tokio::runtime::Runtime;
+use tokio::runtime::Handle;
 use tokio::sync::mpsc;
 
 use crate::psn::*;
@@ -70,7 +70,7 @@ impl Default for AppSettings {
 
 // Values that shouldn't be persisted from run to run.
 struct VolatileData {
-    rt: Runtime,
+    rt_handle: Option<Handle>,
     toasts: Toasts,
 
     clipboard: Option<Box<dyn ClipboardProvider>>,
@@ -108,7 +108,7 @@ impl Default for VolatileData {
         };
 
         VolatileData {
-            rt: Runtime::new().unwrap(),
+            rt_handle: None,
             toasts: Toasts::default().reverse(true).with_anchor(egui_notify::Anchor::BottomRight),
 
             clipboard,
@@ -180,7 +180,7 @@ impl eframe::App for UpdatesApp {
 }
 
 impl UpdatesApp {
-    pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
+    pub fn new(cc: &eframe::CreationContext<'_>, rt_handle: Handle) -> Self {
         let mut fonts = egui::FontDefinitions::default();
 
         fonts.font_data.insert(
@@ -210,11 +210,15 @@ impl UpdatesApp {
 
         cc.egui_ctx.set_fonts(fonts);
 
-        if let Some(storage) = cc.storage {
+        let mut app: Self = if let Some(storage) = cc.storage {
             eframe::get_value(storage, eframe::APP_KEY).unwrap_or_default()
         } else {
             Default::default()
-        }
+        };
+
+        app.v.rt_handle = Some(rt_handle);
+
+        return app;
     }
 
     fn handle_search_promise(&mut self, toasts: &mut Vec<(String, ToastLevel)>) -> Option<()> {
@@ -416,7 +420,7 @@ impl UpdatesApp {
         let download_size = pkg.size;
         let download_path = self.settings.pkg_download_path.clone();
 
-        let _guard = self.v.rt.enter();
+        let _guard = self.v.rt_handle.as_ref().expect("unexpected lack of runtime").enter();
 
         let download_promise = Promise::spawn_async(async move { pkg.start_download(tx, download_path, serial, title).await });
 
@@ -438,7 +442,7 @@ impl UpdatesApp {
         let download_path = self.settings.pkg_download_path.clone();
         let title_id = update_info.title_id.clone();
 
-        let _guard = self.v.rt.enter();
+        let _guard = self.v.rt_handle.as_ref().expect("unexpected lack of runtime").enter();
 
         let merge_promise = Promise::spawn_async(async move { update_info.merge_parts(tx, &download_path).await });
 
@@ -529,7 +533,7 @@ impl UpdatesApp {
 
                 info!("Fetching updates for '{}'", self.v.serial_query);
 
-                let _guard = self.v.rt.enter();
+                let _guard = self.v.rt_handle.as_ref().expect("unexpected lack of runtime").enter();
                 let promise = Promise::spawn_async(UpdateInfo::get_info(self.v.serial_query.clone()));
 
                 self.v.search_promise = Some(promise);
