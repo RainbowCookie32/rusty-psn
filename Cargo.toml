@@ -16,7 +16,7 @@ sha2 = "0.10.8"
 hex = "0.4.3"
 serde_json = "1.0.140"
 
-log = "0.4.26"
+log = "0.4.27"
 flexi_logger = "0.29.8"
 
 clap = { version = "4.5.32", features = ["derive"] }
