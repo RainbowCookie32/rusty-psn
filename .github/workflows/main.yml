@@ -127,7 +127,11 @@ jobs:
         uses: actions/download-artifact@v4.1.9
         with:
           path: artifacts
+          merge-multiple: true
           pattern: rusty-psn*
+
+      - name: Print downloaded artifacts
+        run: ls -R artifacts
 
       - name: Create release
         uses: softprops/action-gh-release@v2.2.1
