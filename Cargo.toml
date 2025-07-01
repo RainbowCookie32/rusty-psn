@@ -22,7 +22,7 @@ flexi_logger = "0.30.1"
 clap = { version = "4.5.32", features = ["derive"] }
 crossterm = { version = "0.28.1", optional = true }
 
-reqwest = { version = "0.12.15", default-features = false, features = ["rustls-tls"] }
+reqwest = { version = "0.12.21", default-features = false, features = ["rustls-tls"] }
 
 rfd = { version = "0.15.3", optional = true }
 eframe = { version = "0.31.1", features = ["persistence"], optional = true }
