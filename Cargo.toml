@@ -31,7 +31,7 @@ notify-rust = { version = "4.11.7", optional = true }
 
 poll-promise = { version = "0.3.0", features = ["tokio"] }
 serde = { version = "1.0.219", default-features = false, features = ["derive"] }
-tokio = { version = "1.44.2", default-features = false, features = ["rt", "io-util", "macros", "fs"] }
+tokio = { version = "1.46.1", default-features = false, features = ["rt", "io-util", "macros", "fs"] }
 
 [features]
 default = ["egui"]
