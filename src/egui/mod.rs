@@ -14,7 +14,7 @@ use serde::{Deserialize, Serialize};
 
 use tokio::runtime::Handle;
 use tokio::select;
-use tokio::sync::{mpsc, Mutex};
+use tokio::sync::Mutex;
 
 use crate::psn::*;
 
@@ -33,14 +33,17 @@ pub struct ActiveDownload {
     promise: Promise<Result<(), DownloadError>>,
 }
 
+pub struct MergeProgressStatus {
+    progress: usize,
+    last_received_status: MergeStatus,
+}
+
 pub struct ActiveMerge {
     title_id: String,
 
-    part_progress: usize,
-    last_received_status: MergeStatus,
+    progress_status: Arc<Mutex<MergeProgressStatus>>,
 
     promise: Promise<Result<(), MergeError>>,
-    progress_rx: mpsc::Receiver<MergeStatus>,
 }
 
 #[derive(Clone, Deserialize, Serialize)]
@@ -180,7 +183,6 @@ impl eframe::App for UpdatesApp {
             self.show_notifications(msg, level);
         }
 
-        // ctx.request_repaint();
         self.v.toasts.show(ctx);
     }
 }
@@ -367,14 +369,6 @@ impl UpdatesApp {
         let mut finished_merge_indexes: Vec<usize> = Vec::new();
         for i in 0..self.v.merge_queue.len() {
             let merge = &mut self.v.merge_queue[i];
-            if let Ok(status) = merge.progress_rx.try_recv() {
-                if let MergeStatus::PartProgress(progress) = status {
-                    merge.part_progress = progress;
-                }
-
-                merge.last_received_status = status;
-            }
-
             if let Some(result) = merge.promise.ready() {
                 match result {
                     Ok(_) => {
@@ -417,15 +411,14 @@ impl UpdatesApp {
         let download_size = pkg.size;
         let download_path = self.settings.pkg_download_path.clone();
 
-        let _guard = self.v.rt_handle.as_ref().expect("unexpected lack of runtime").enter();
-
         let status = Arc::new(Mutex::new(DownloadProgressStatus {
             progress: 0,
             last_received_status: DownloadStatus::Verifying,
         }));
-
         let ctx = ui.ctx().clone();
         let async_status = status.clone();
+
+        let _guard = self.v.rt_handle.as_ref().expect("unexpected lack of runtime").enter();
         let download_promise = Promise::spawn_async(async move {
             let download_fut = pkg.start_download(tx.clone(), download_path.clone(), serial.clone(), title.clone());
             tokio::pin!(download_fut);
@@ -462,23 +455,50 @@ impl UpdatesApp {
         }
     }
 
-    fn start_merge_parts(&self, update_info: UpdateInfo) -> ActiveMerge {
-        let (tx, rx) = tokio::sync::mpsc::channel(10);
+    fn start_merge_parts(&self, update_info: UpdateInfo, ui: &egui::Ui) -> ActiveMerge {
+        let (tx, mut rx) = tokio::sync::mpsc::channel(10);
         let download_path = self.settings.pkg_download_path.clone();
         let title_id = update_info.title_id.clone();
 
-        let _guard = self.v.rt_handle.as_ref().expect("unexpected lack of runtime").enter();
+        let status = Arc::new(Mutex::new(MergeProgressStatus {
+            progress: 0,
+            last_received_status: MergeStatus::PartProgress(0),
+        }));
+        let ctx = ui.ctx().clone();
+        let async_status = status.clone();
 
-        let merge_promise = Promise::spawn_async(async move { update_info.merge_parts(tx, &download_path).await });
+        let _guard = self.v.rt_handle.as_ref().expect("unexpected lack of runtime").enter();
+        let merge_promise = Promise::spawn_async(async move {
+            let merge_fut = update_info.merge_parts(tx, &download_path);
+            tokio::pin!(merge_fut);
+            loop {
+                select! {
+                    result = &mut merge_fut => {
+                        ctx.request_repaint();
+                        return result
+                    },
+                    progress = rx.recv() => {
+                        let mut guard = async_status.lock().await;
+                        let merge = guard.deref_mut();
+                        if let Some(status) = progress {
+                            if let MergeStatus::PartProgress(progress) = status {
+                                merge.progress = progress;
+                            }
+
+                            merge.last_received_status = status;
+                            ctx.request_repaint();
+                        }
+                    }
+                };
+            }
+        });
 
         ActiveMerge {
             title_id,
 
-            part_progress: 0,
-            last_received_status: MergeStatus::PartProgress(0),
+            progress_status: status,
 
             promise: merge_promise,
-            progress_rx: rx,
         }
     }
 
@@ -670,7 +690,7 @@ impl UpdatesApp {
                 }
 
                 if merge_btn.clicked() {
-                    self.v.merge_queue.push(self.start_merge_parts(update.clone()));
+                    self.v.merge_queue.push(self.start_merge_parts(update.clone(), ui));
                 }
             })
             .body(|ui| {
@@ -877,7 +897,8 @@ impl UpdatesApp {
 
     fn title_merge_status(&self, update: &UpdateInfo) -> ActiveMergeStatus {
         if let Some(active_merge) = self.get_active_merge(&update.title_id) {
-            let progress = active_merge.part_progress as f32 / update.packages.len() as f32;
+            let merge = active_merge.progress_status.blocking_lock();
+            let progress = merge.progress as f32 / update.packages.len() as f32;
             return ActiveMergeStatus::Merging(progress);
         } else if self.v.completed_merges.contains(&update.title_id) {
             return ActiveMergeStatus::Merged;
@@ -931,7 +952,8 @@ impl UpdatesApp {
         };
 
         if let Some(active_merge) = self.get_active_merge(title_id) {
-            if active_merge.part_progress < part_number {
+            let merge = active_merge.progress_status.blocking_lock();
+            if merge.progress < part_number {
                 return ActiveMergeStatus::Merging(0.0);
             } else {
                 return ActiveMergeStatus::Merged;
