@@ -1,4 +1,6 @@
+use std::ops::DerefMut;
 use std::path::PathBuf;
+use std::sync::Arc;
 use std::time::Duration;
 
 use eframe::egui;
@@ -11,20 +13,24 @@ use poll_promise::Promise;
 use serde::{Deserialize, Serialize};
 
 use tokio::runtime::Handle;
-use tokio::sync::mpsc;
+use tokio::select;
+use tokio::sync::{mpsc, Mutex};
 
 use crate::psn::*;
+
+pub struct DownloadProgressStatus {
+    progress: u64,
+    last_received_status: DownloadStatus,
+}
 
 pub struct ActiveDownload {
     title_id: String,
     pkg_id: String,
 
     size: u64,
-    progress: u64,
-    last_received_status: DownloadStatus,
+    progress_status: Arc<Mutex<DownloadProgressStatus>>,
 
     promise: Promise<Result<(), DownloadError>>,
-    progress_rx: mpsc::Receiver<DownloadStatus>,
 }
 
 pub struct ActiveMerge {
@@ -101,7 +107,7 @@ impl Default for VolatileData {
             match ClipboardContext::new() {
                 Ok(clip) => Some(Box::new(clip)),
                 Err(e) => {
-                    error!("Failed to init clipboard: {}", e.to_string());
+                    error!("Failed to init clipboard: {e}");
                     None
                 }
             }
@@ -218,7 +224,7 @@ impl UpdatesApp {
 
         app.v.rt_handle = Some(rt_handle);
 
-        return app;
+        app
     }
 
     fn handle_search_promise(&mut self, toasts: &mut Vec<(String, ToastLevel)>) -> Option<()> {
@@ -273,7 +279,7 @@ impl UpdatesApp {
                         }
                     }
 
-                    error!("Error received from updates query: {:?}", e);
+                    error!("Error received from updates query: {e:?}");
                 }
             }
         }
@@ -285,15 +291,6 @@ impl UpdatesApp {
         let mut entries_to_remove = Vec::new();
 
         for (i, download) in self.v.download_queue.iter_mut().enumerate() {
-            if let Ok(status) = download.progress_rx.try_recv() {
-                if let DownloadStatus::Progress(progress) = status {
-                    // info!("Received {progress} bytes for active download ({} {})", download.id, download.version);
-                    download.progress += progress;
-                }
-
-                download.last_received_status = status;
-            }
-
             // Check if the download promise is resolved (finished or failed).
             if let Some(r) = download.promise.ready() {
                 // Queue up for removal.
@@ -413,8 +410,8 @@ impl UpdatesApp {
         }
     }
 
-    fn start_download(&self, serial: String, title: String, pkg: PackageInfo) -> ActiveDownload {
-        let (tx, rx) = tokio::sync::mpsc::channel(10);
+    fn start_download(&self, serial: String, title: String, pkg: PackageInfo, ui: &egui::Ui) -> ActiveDownload {
+        let (tx, mut rx) = tokio::sync::mpsc::channel(10);
         let id = serial.clone();
         let pkg_id = pkg.id();
         let download_size = pkg.size;
@@ -422,18 +419,46 @@ impl UpdatesApp {
 
         let _guard = self.v.rt_handle.as_ref().expect("unexpected lack of runtime").enter();
 
-        let download_promise = Promise::spawn_async(async move { pkg.start_download(tx, download_path, serial, title).await });
+        let status = Arc::new(Mutex::new(DownloadProgressStatus {
+            progress: 0,
+            last_received_status: DownloadStatus::Verifying,
+        }));
+
+        let ctx = ui.ctx().clone();
+        let async_status = status.clone();
+        let download_promise = Promise::spawn_async(async move {
+            let download_fut = pkg.start_download(tx.clone(), download_path.clone(), serial.clone(), title.clone());
+            tokio::pin!(download_fut);
+            loop {
+                select! {
+                    result = &mut download_fut => {
+                        ctx.request_repaint();
+                        return result
+                    }
+                    progress = rx.recv() => {
+                        if let Some(progress_status) = progress {
+                            let mut guard = async_status.lock().await;
+                            let download = guard.deref_mut();
+                            if let DownloadStatus::Progress(progress) = progress_status {
+                                download.progress += progress;
+                            }
+
+                            download.last_received_status = progress_status;
+                            ctx.request_repaint();
+                        }
+                    }
+                }
+            }
+        });
 
         ActiveDownload {
             title_id: id,
             pkg_id,
 
             size: download_size,
-            progress: 0,
-            last_received_status: DownloadStatus::Verifying,
+            progress_status: status,
 
             promise: download_promise,
-            progress_rx: rx,
         }
     }
 
@@ -497,7 +522,7 @@ impl UpdatesApp {
                             match clip_ctx.get_contents() {
                                 Ok(contents) => self.v.serial_query.push_str(&contents),
                                 Err(e) => {
-                                    warn!("Failed to paste clipboard contents: {}", e.to_string())
+                                    warn!("Failed to paste clipboard contents: {e}")
                                 }
                             }
 
@@ -600,13 +625,13 @@ impl UpdatesApp {
                 ui.separator();
 
                 if ui.button("Download all").clicked() {
-                    info!("Downloading all updates for serial {} ({})", title_id, update_count);
+                    info!("Downloading all updates for serial {title_id} ({update_count})");
 
                     for pkg in update.packages.iter() {
                         // Avoid duplicates by checking if there's already a download for this serial and version on the queue.
                         if self.get_active_download(title_id, pkg).is_none() {
                             info!("Downloading update {} for serial {title_id} (group)", pkg.id());
-                            self.add_download(self.start_download(title_id.to_string(), title.clone(), pkg.clone()));
+                            self.add_download(self.start_download(title_id.to_string(), title.clone(), pkg.clone(), ui));
                         }
                     }
                 }
@@ -717,7 +742,7 @@ impl UpdatesApp {
 
                 if download_btn.clicked() {
                     info!("Downloading update {} for serial {} (individual)", pkg.version, title_id);
-                    self.add_download(self.start_download(title_id.to_string(), title, pkg.clone()));
+                    self.add_download(self.start_download(title_id.to_string(), title, pkg.clone(), ui));
                 }
             });
         });
@@ -854,9 +879,9 @@ impl UpdatesApp {
         if let Some(active_merge) = self.get_active_merge(&update.title_id) {
             let progress = active_merge.part_progress as f32 / update.packages.len() as f32;
             return ActiveMergeStatus::Merging(progress);
-        } else if self.v.completed_merges.iter().any(|id| *id == update.title_id) {
+        } else if self.v.completed_merges.contains(&update.title_id) {
             return ActiveMergeStatus::Merged;
-        } else if self.v.failed_merges.iter().any(|id| *id == update.title_id) {
+        } else if self.v.failed_merges.contains(&update.title_id) {
             return ActiveMergeStatus::Failed;
         }
 
@@ -887,8 +912,9 @@ impl UpdatesApp {
             }
         };
 
-        match download.last_received_status {
-            DownloadStatus::Progress(_) => ActiveDownloadStatus::Downloading(download.progress as f32 / download.size as f32),
+        let status = download.progress_status.blocking_lock();
+        match status.last_received_status {
+            DownloadStatus::Progress(_) => ActiveDownloadStatus::Downloading(status.progress as f32 / download.size as f32),
             DownloadStatus::Verifying => ActiveDownloadStatus::Verifying,
             _ => ActiveDownloadStatus::NotStarted,
         }
