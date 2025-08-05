@@ -174,7 +174,7 @@ impl eframe::App for UpdatesApp {
             self.show_notifications(msg, level);
         }
 
-        ctx.request_repaint();
+        // ctx.request_repaint();
         self.v.toasts.show(ctx);
     }
 }
@@ -534,7 +534,13 @@ impl UpdatesApp {
                 info!("Fetching updates for '{}'", self.v.serial_query);
 
                 let _guard = self.v.rt_handle.as_ref().expect("unexpected lack of runtime").enter();
-                let promise = Promise::spawn_async(UpdateInfo::get_info(self.v.serial_query.clone()));
+                let serial_query = self.v.serial_query.clone();
+                let ctx = ui.ctx().clone();
+                let promise = Promise::spawn_async(async move {
+                    let result = UpdateInfo::get_info(serial_query).await;
+                    ctx.request_repaint();
+                    result
+                });
 
                 self.v.search_promise = Some(promise);
             });
