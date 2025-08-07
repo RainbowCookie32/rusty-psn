@@ -273,6 +273,12 @@ impl UpdatesApp {
                                 ToastLevel::Error,
                             ));
                         }
+                        UpdateError::XmlEncodingError(e) => {
+                            toasts.push((
+                                format!("Error parsing response from Sony, try again later ({e})."),
+                                ToastLevel::Error,
+                            ));
+                        }
                         UpdateError::ManifestParsing(e) => {
                             toasts.push((
                                 format!("Error parsing manifest response from Sony, try again later ({e})."),
@@ -546,13 +552,13 @@ impl UpdatesApp {
                                 }
                             }
 
-                            ui.close_menu();
+                            ui.close();
                         }
 
                         ui.add_enabled_ui(!self.v.serial_query.is_empty(), |ui| {
                             if ui.button("Clear").clicked() {
                                 self.v.serial_query = String::new();
-                                ui.close_menu();
+                                ui.close();
                             }
                         });
                     }

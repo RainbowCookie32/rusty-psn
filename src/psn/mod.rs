@@ -51,6 +51,7 @@ pub enum UpdateError {
     UnhandledErrorResponse(String),
     Reqwest(reqwest::Error),
     XmlParsing(quick_xml::Error),
+    XmlEncodingError(quick_xml::encoding::EncodingError),
     ManifestParsing(serde_json::Error),
 }
 
@@ -135,6 +136,7 @@ impl UpdateInfo {
                     return Err(UpdateError::UnhandledErrorResponse(reason));
                 }
                 parser::ParseError::XmlParsing(reason) => return Err(UpdateError::XmlParsing(reason)),
+                parser::ParseError::XmlEncodingError(reason) => return Err(UpdateError::XmlEncodingError(reason))
             },
         }
 
