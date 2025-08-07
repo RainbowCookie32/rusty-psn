@@ -136,7 +136,7 @@ impl UpdateInfo {
                     return Err(UpdateError::UnhandledErrorResponse(reason));
                 }
                 parser::ParseError::XmlParsing(reason) => return Err(UpdateError::XmlParsing(reason)),
-                parser::ParseError::XmlEncodingError(reason) => return Err(UpdateError::XmlEncodingError(reason))
+                parser::ParseError::XmlEncodingError(reason) => return Err(UpdateError::XmlEncodingError(reason)),
             },
         }
 

@@ -7,7 +7,7 @@ use super::{PackageInfo, UpdateInfo};
 pub enum ParseError {
     ErrorCode(String),
     XmlParsing(quick_xml::Error),
-    XmlEncodingError(quick_xml::encoding::EncodingError)
+    XmlEncodingError(quick_xml::encoding::EncodingError),
 }
 
 pub fn parse_response(response: String, info: &mut UpdateInfo) -> Result<(), ParseError> {
