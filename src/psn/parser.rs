@@ -7,6 +7,7 @@ use super::{PackageInfo, UpdateInfo};
 pub enum ParseError {
     ErrorCode(String),
     XmlParsing(quick_xml::Error),
+    XmlEncodingError(quick_xml::encoding::EncodingError),
 }
 
 pub fn parse_response(response: String, info: &mut UpdateInfo) -> Result<(), ParseError> {
@@ -148,12 +149,12 @@ pub fn parse_response(response: String, info: &mut UpdateInfo) -> Result<(), Par
             }
             Ok(Event::Text(e)) => {
                 if title_element {
-                    let title = e.unescape().map_err(ParseError::XmlParsing)?;
+                    let title = e.decode().map_err(ParseError::XmlEncodingError)?;
 
                     title_element = false;
                     info.titles.push(title.to_string());
                 } else if err_code_encountered {
-                    let err_code_text = e.unescape().map_err(ParseError::XmlParsing)?;
+                    let err_code_text = e.decode().map_err(ParseError::XmlEncodingError)?;
                     return Err(ParseError::ErrorCode(err_code_text.into()));
                 }
             }
