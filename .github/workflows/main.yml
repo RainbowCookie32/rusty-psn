@@ -8,7 +8,7 @@ jobs:
   build_matrix:
     strategy:
       matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
+        os: [ubuntu-22.04, windows-latest, macos-latest]
         feature: ["cli", "egui"]
 
     runs-on: ${{ matrix.os }}
@@ -27,7 +27,7 @@ jobs:
         if: ${{ matrix.os != 'windows-latest' }}
 
       - name: Install dependencies
-        if: ${{ matrix.os == 'ubuntu-latest' && matrix.feature == 'egui' }}
+        if: ${{ matrix.os == 'ubuntu-22.04' && matrix.feature == 'egui' }}
         run: |
           sudo apt update
           sudo apt-get install libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev libspeechd-dev libxkbcommon-dev libssl-dev libgtk-3-dev
@@ -65,7 +65,7 @@ jobs:
           cp target/release/universal/rusty-psn rusty-psn.app/Contents/MacOS
 
       - name: Move binary (Linux)
-        if: ${{ matrix.os == 'ubuntu-latest' }}
+        if: ${{ matrix.os == 'ubuntu-22.04' }}
         run: |
           mkdir result
           cp target/release/rusty-psn result
@@ -89,7 +89,7 @@ jobs:
           cp target/release/rusty-psn.exe result
 
       - name: Upload artifact (Linux)
-        if: ${{ matrix.os == 'ubuntu-latest' }}
+        if: ${{ matrix.os == 'ubuntu-22.04' }}
         uses: actions/upload-artifact@v4
         with:
           name: rusty-psn-${{ matrix.feature }}-linux
