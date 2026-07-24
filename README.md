@@ -1,6 +1,6 @@
 # rusty-psn
 
-A simple tool to grab updates for PS3 & PS4 games, directly from Sony's servers
+A simple tool to grab updates for PS3, PS4, and PS Vita games directly from Sony's servers,
 using their updates API. Available for both Linux and Windows, in both GUI and
 CLI alternatives.
 
