@@ -7,7 +7,7 @@ use std::{
     path::PathBuf,
 };
 
-use hmac::{Hmac, Mac, digest::Output};
+use hmac::{digest::Output, Hmac, Mac};
 use sha2::Sha256;
 use tokio::{
     fs::OpenOptions,
@@ -73,7 +73,7 @@ pub fn get_update_info_url(title_id: &str, platform_variant: PlaformVariant) -> 
                 "https://gs-sec.ww.np.dl.playstation.net/plo/np/{0}/{1:x}/{0}-ver.xml",
                 title_id, hmac
             ))
-        },
+        }
         PlaformVariant::PSVita => {
             let hmac = get_title_id_hmac(title_id, "E5E278AA1EE34082A088279C83F9BBC806821C52F2AB5D2B4ABD995450355114")?;
             Ok(format!(
