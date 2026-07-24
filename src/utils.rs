@@ -83,7 +83,7 @@ const CHUNK_SIZE: usize = 1024 * 1024 * 128;
 pub async fn hash_file(file: &mut File, hash: &str, hash_whole_file: bool) -> Result<bool, DownloadError> {
     let mut hasher = Sha1::new();
 
-    // Last 0x20 bytes are the SHA1 hash for PS3 updates. PS4 updates don't include hash suffix.
+    // Last 0x20 bytes are the SHA1 hash for PS3 and PS Vita updates. PS4 updates don't include hash suffix.
     let suffix_size = if hash_whole_file { 0 } else { 0x20 };
 
     // If the file size is below the length of the embedded sha1-hash suffix,
@@ -131,5 +131,5 @@ pub async fn hash_file(file: &mut File, hash: &str, hash_whole_file: bool) -> Re
         }
     }
 
-    Ok(hasher.digest().to_string() == hash)
+    Ok(hasher.digest().to_string() == hash.to_lowercase())
 }
