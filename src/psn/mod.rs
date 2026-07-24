@@ -115,6 +115,7 @@ impl UpdateInfo {
         }
 
         let mut info = UpdateInfo::empty(platform_variant);
+
         match parser::parse_response(response_txt, &mut info) {
             Ok(()) => {
                 if info.title_id.is_empty() || info.packages.is_empty() {
@@ -127,16 +128,16 @@ impl UpdateInfo {
                 let titles = &info.titles;
                 info.titles = titles.iter().map(|title| title.replace("\n", " ")).collect();
             }
-            Err(e) => match e {
+            Err(e) => return match e {
                 parser::ParseError::ErrorCode(reason) => {
                     if reason == "NoSuchKey" {
                         return Err(UpdateError::InvalidSerial);
                     }
 
-                    return Err(UpdateError::UnhandledErrorResponse(reason));
+                    Err(UpdateError::UnhandledErrorResponse(reason))
                 }
-                parser::ParseError::XmlParsing(reason) => return Err(UpdateError::XmlParsing(reason)),
-                parser::ParseError::XmlEncodingError(reason) => return Err(UpdateError::XmlEncodingError(reason)),
+                parser::ParseError::XmlParsing(reason) => Err(UpdateError::XmlParsing(reason)),
+                parser::ParseError::XmlEncodingError(reason) => Err(UpdateError::XmlEncodingError(reason)),
             },
         }
 

@@ -17,8 +17,19 @@ const INVALID_CHARS: [char; 9] = ['<', '>', ':', '"', '/', '\\', '|', '?', '*'];
 const INVALID_CHARS: [char; 1] = ['/'];
 
 fn sanitize_title(title: &str) -> String {
-    //replace invalid characters with underscores or anything we want lol
-    title.replace(|c| INVALID_CHARS.contains(&c), "_")
+    let options = if cfg!(target_family = "windows") {
+        sanitise_file_name::Options::default()
+    } else {
+        // No need to make filenames boring in other platforms just because
+        // Windows can't have some fun.
+        sanitise_file_name::Options {
+            windows_safe: false,
+            ..sanitise_file_name::Options::default()
+        }
+    };
+    
+    let clean_title = sanitise_file_name::sanitise_with_options(title, &options);
+    clean_title
 }
 
 fn create_old_pkg_path<P>(download_path: P, serial: &str) -> PathBuf
