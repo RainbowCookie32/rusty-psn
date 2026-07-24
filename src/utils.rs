@@ -27,7 +27,7 @@ fn sanitize_title(title: &str) -> String {
             ..sanitise_file_name::Options::default()
         }
     };
-    
+
     let clean_title = sanitise_file_name::sanitise_with_options(title, &options);
     clean_title
 }

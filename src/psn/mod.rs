@@ -128,17 +128,19 @@ impl UpdateInfo {
                 let titles = &info.titles;
                 info.titles = titles.iter().map(|title| title.replace("\n", " ")).collect();
             }
-            Err(e) => return match e {
-                parser::ParseError::ErrorCode(reason) => {
-                    if reason == "NoSuchKey" {
-                        return Err(UpdateError::InvalidSerial);
-                    }
+            Err(e) => {
+                return match e {
+                    parser::ParseError::ErrorCode(reason) => {
+                        if reason == "NoSuchKey" {
+                            return Err(UpdateError::InvalidSerial);
+                        }
 
-                    Err(UpdateError::UnhandledErrorResponse(reason))
+                        Err(UpdateError::UnhandledErrorResponse(reason))
+                    }
+                    parser::ParseError::XmlParsing(reason) => Err(UpdateError::XmlParsing(reason)),
+                    parser::ParseError::XmlEncodingError(reason) => Err(UpdateError::XmlEncodingError(reason)),
                 }
-                parser::ParseError::XmlParsing(reason) => Err(UpdateError::XmlParsing(reason)),
-                parser::ParseError::XmlEncodingError(reason) => Err(UpdateError::XmlEncodingError(reason)),
-            },
+            }
         }
 
         if platform_variant != PlaformVariant::PS4 {
