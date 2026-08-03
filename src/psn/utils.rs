@@ -7,7 +7,7 @@ use std::{
     path::PathBuf,
 };
 
-use hmac::{Hmac, Mac};
+use hmac::{digest::Output, Hmac, Mac};
 use sha2::Sha256;
 use tokio::{
     fs::OpenOptions,
@@ -20,6 +20,7 @@ type HmacSha256 = Hmac<Sha256>;
 pub enum PlaformVariant {
     PS3,
     PS4,
+    PSVita,
 }
 
 impl fmt::Display for PlaformVariant {
@@ -37,7 +38,27 @@ pub fn get_platform_variant(title_id: &str) -> Option<PlaformVariant> {
         return Some(PlaformVariant::PS4);
     }
 
+    if title_id.starts_with("PCS") {
+        return Some(PlaformVariant::PSVita);
+    }
+
     None
+}
+
+fn get_title_id_hmac(title_id: &str, key: &str) -> Result<Output<Sha256>, UpdateError> {
+    let key = match hex::decode(key) {
+        Ok(key) => key,
+        Err(_) => return Err(UpdateError::InvalidSerial),
+    };
+    let msg = format!("np_{0}", title_id);
+    let mut hasher = match HmacSha256::new_from_slice(&key) {
+        Ok(hasher) => hasher,
+        Err(_) => return Err(UpdateError::InvalidSerial),
+    };
+
+    hasher.update(msg.as_ref());
+    let hash_bytes = hasher.finalize().into_bytes();
+    Ok(hash_bytes)
 }
 
 pub fn get_update_info_url(title_id: &str, platform_variant: PlaformVariant) -> Result<String, UpdateError> {
@@ -47,22 +68,17 @@ pub fn get_update_info_url(title_id: &str, platform_variant: PlaformVariant) -> 
             title_id
         )),
         PlaformVariant::PS4 => {
-            let key = match hex::decode("AD62E37F905E06BC19593142281C112CEC0E7EC3E97EFDCAEFCDBAAFA6378D84") {
-                Ok(key) => key,
-                Err(_) => return Err(UpdateError::InvalidSerial),
-            };
-            let msg = format!("np_{0}", title_id);
-            let mut hasher = match HmacSha256::new_from_slice(&key) {
-                Ok(hasher) => hasher,
-                Err(_) => return Err(UpdateError::InvalidSerial),
-            };
-
-            hasher.update(msg.as_ref());
-            let hash_bytes = hasher.finalize().into_bytes();
-
+            let hmac = get_title_id_hmac(title_id, "AD62E37F905E06BC19593142281C112CEC0E7EC3E97EFDCAEFCDBAAFA6378D84")?;
             Ok(format!(
                 "https://gs-sec.ww.np.dl.playstation.net/plo/np/{0}/{1:x}/{0}-ver.xml",
-                title_id, hash_bytes
+                title_id, hmac
+            ))
+        }
+        PlaformVariant::PSVita => {
+            let hmac = get_title_id_hmac(title_id, "E5E278AA1EE34082A088279C83F9BBC806821C52F2AB5D2B4ABD995450355114")?;
+            Ok(format!(
+                "https://gs-sec.ww.np.dl.playstation.net/pl/np/{0}/{1:x}/{0}-ver.xml",
+                title_id, hmac
             ))
         }
     }
