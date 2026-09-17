@@ -3,14 +3,6 @@
 
 #[cfg(target_os = "macos")]
 extern crate dirs;
-
-use clap::Parser;
-use flexi_logger::{Logger, LoggerHandle};
-#[cfg(feature = "cli")]
-use std::path::PathBuf;
-use std::sync::Arc;
-use tokio::{runtime::Runtime, sync::Notify};
-
 #[macro_use]
 extern crate log;
 #[cfg(feature = "cli")]
@@ -20,40 +12,36 @@ mod egui;
 mod psn;
 mod utils;
 
+#[cfg(feature = "cli")]
+use clap::Parser;
+use flexi_logger::{Logger, LoggerHandle};
+
+#[cfg(feature = "cli")]
 #[derive(Debug, Parser)]
 #[clap(author, version, about)]
 struct Args {
-    #[cfg(feature = "cli")]
     #[clap(
         short,
         long,
-        required = true,
         help = "The serial(s) you want to search for, in quotes and separated by spaces"
     )]
     titles: Vec<String>,
-    #[cfg(feature = "cli")]
     #[clap(
         short,
         long,
         help = "Downloads all available updates printing only errors, without needing user intervention."
     )]
     silent: bool,
-    #[cfg(feature = "cli")]
     #[clap(short, long, help = "Target folder to save the downloaded update files to.")]
-    destination_path: Option<PathBuf>,
-    #[clap(
-        long,
-        help = "Disables writing the program's log to a .log file. Don't use if you need help."
-    )]
-    no_log_file: bool,
+    destination_path: Option<std::path::PathBuf>,
 }
 
 fn main() {
-    let args = Args::parse();
-    let _logger_handle = init_log(args.no_log_file);
+    let _logger_handle = init_log();
 
     #[cfg(feature = "cli")]
     {
+        let args = Args::parse();
         info!("starting cli app");
         cli::start_app(args);
     }
@@ -66,9 +54,9 @@ fn main() {
         // Prevents egui blocking the same thread that tokio runtime is running on,
         // which can lead to network and io tasks being blocked when the application
         // is minimised or otherwise suspended by egui.
-        let rt = Runtime::new().unwrap();
+        let rt = tokio::runtime::Runtime::new().unwrap();
         let rt_handle = rt.handle().clone();
-        let notify_main = Arc::new(Notify::new());
+        let notify_main = std::sync::Arc::new(tokio::sync::Notify::new());
         let notify_thread = notify_main.clone();
         let rt_thread = std::thread::spawn(move || {
             rt.block_on(async {
@@ -89,18 +77,16 @@ fn main() {
     }
 }
 
-#[cfg(target_os = "macos")]
-fn init_log(no_log_file: bool) -> LoggerHandle {
-    let mut logger = Logger::try_with_str("info").expect("Failed to create logger");
+fn init_log() -> LoggerHandle {
+    let mut logger = Logger::try_with_str("info")
+        .expect("Failed to create logger");
 
-    if no_log_file {
-        logger = logger.do_not_log();
-    } else {
+    if cfg!(target_os = "macos") {
         let mut logs_dir = dirs::data_local_dir().unwrap();
         logs_dir.push("rusty-psn");
 
         match std::fs::create_dir_all(&logs_dir) {
-            Ok(_) => info!("Created directory for updates"),
+            Ok(_) => info!("Created directory for logs"),
             Err(e) => match e.kind() {
                 std::io::ErrorKind::AlreadyExists => {}
                 _ => panic!("{}", e),
@@ -109,21 +95,8 @@ fn init_log(no_log_file: bool) -> LoggerHandle {
 
         logger = logger.log_to_file(flexi_logger::FileSpec::default().directory(logs_dir));
     }
-
-    logger
-        .duplicate_to_stdout(flexi_logger::Duplicate::Error)
-        .start()
-        .expect("Failed to start logger!")
-}
-
-#[cfg(not(target_os = "macos"))]
-fn init_log(no_log_file: bool) -> LoggerHandle {
-    let mut logger = Logger::try_with_str("info").expect("Failed to create logger");
-
-    if no_log_file {
-        logger = logger.do_not_log();
-    } else {
-        logger = logger.log_to_file(flexi_logger::FileSpec::default());
+    else {
+        logger = logger.log_to_file(flexi_logger::FileSpec::default())
     }
 
     logger
