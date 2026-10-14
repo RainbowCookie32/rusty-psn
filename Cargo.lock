@@ -3340,7 +3340,7 @@ checksum = "8a0d197bd2c9dc6e53b84da9556a69ba4cdfab8619eb41a8bd1cc2027a0f6b1d"
 
 [[package]]
 name = "rusty-psn"
-version = "0.5.10"
+version = "0.6.0"
 dependencies = [
  "bytesize",
  "clap",
@@ -3358,12 +3358,14 @@ dependencies = [
  "quick-xml 0.38.1",
  "reqwest",
  "rfd",
+ "rustls",
  "sanitise-file-name",
  "serde",
  "serde_json",
  "sha1_smol",
  "sha2",
  "tokio",
+ "webpki-roots",
 ]
 
 [[package]]

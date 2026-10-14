@@ -1,5 +1,6 @@
 mod manifest_parser;
 mod parser;
+mod tls;
 pub mod utils;
 
 use std::{path::PathBuf, str::FromStr};
@@ -95,11 +96,7 @@ impl UpdateInfo {
             Ok(url) => url,
             Err(err) => return Err(err),
         };
-        let client = reqwest::ClientBuilder::default()
-            // Sony has funky certificates, so this needs to be enabled.
-            .danger_accept_invalid_certs(true)
-            .build()
-            .map_err(UpdateError::Reqwest)?;
+        let client = psn_client().map_err(UpdateError::Reqwest)?;
 
         info!("Querying for updates for serial: {}", title_id);
 
@@ -220,6 +217,14 @@ impl UpdateInfo {
     }
 }
 
+/// The HTTP client for PSN requests.
+fn psn_client() -> reqwest::Result<reqwest::Client> {
+    reqwest::ClientBuilder::default()
+        // Sony has funky certificates, so its hosts skip certificate checks (see tls.rs).
+        .use_preconfigured_tls(tls::client_config())
+        .build()
+}
+
 pub fn parse_title_id(title_id: &str) -> String {
     title_id
         .trim()
@@ -270,11 +275,7 @@ impl PackageInfo {
         info!("Starting download for for {serial} {}", self.version);
         info!("Sending pkg file request to url: {}", &self.url);
 
-        let client = reqwest::ClientBuilder::default()
-            // Sony has funky certificates, so this needs to be enabled.
-            .danger_accept_invalid_certs(true)
-            .build()
-            .map_err(DownloadError::Reqwest)?;
+        let client = psn_client().map_err(DownloadError::Reqwest)?;
 
         let mut response = client.get(&self.url).send().await.map_err(DownloadError::Reqwest)?;
 
@@ -379,6 +380,13 @@ impl PackageInfo {
 }
 
 mod tests {
+    #[tokio::test]
+    async fn psn_client_checks_certificates_outside_sony() {
+        // Only Sony's hosts may skip certificate checks; a self-signed certificate elsewhere must fail.
+        let client = super::psn_client().unwrap();
+        assert!(client.get("https://self-signed.badssl.com/").send().await.is_err());
+    }
+
     #[tokio::test]
     async fn parse_ac3() {
         match super::UpdateInfo::get_info("NPUB30826".to_string()).await {
