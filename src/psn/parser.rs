@@ -8,6 +8,7 @@ pub enum ParseError {
     ErrorCode(String),
     XmlParsing(quick_xml::Error),
     XmlEncodingError(quick_xml::encoding::EncodingError),
+    InvalidTitleId(String),
 }
 
 pub fn parse_response(response: String, info: &mut UpdateInfo) -> Result<(), ParseError> {
@@ -31,6 +32,11 @@ pub fn parse_response(response: String, info: &mut UpdateInfo) -> Result<(), Par
                         for attribute in e.attributes().filter_map(|a| a.ok()) {
                             if attribute.key.as_ref() == b"titleid" {
                                 if let Ok(value) = attribute.unescape_value() {
+                                    // The title id becomes part of the download folder's name, so it must not
+                                    // be able to point anywhere else.
+                                    if value.is_empty() || !value.chars().all(|c| c.is_ascii_alphanumeric()) {
+                                        return Err(ParseError::InvalidTitleId(value.to_string()));
+                                    }
                                     info.title_id = value.to_string();
                                 }
                             }
@@ -172,4 +178,18 @@ pub fn parse_response(response: String, info: &mut UpdateInfo) -> Result<(), Par
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::psn::PlaformVariant;
+
+    #[test]
+    fn parse_response_rejects_unsafe_title_id() {
+        // The title id in the reply becomes a folder name, so it must not be able to leave the download folder.
+        let xml = r#"<titlepatch titleid="../../evil"><tag name="x"><package version="01.01" size="1" sha1sum="a" url="https://a0.ww.np.dl.playstation.net/x.pkg"/></tag></titlepatch>"#;
+        let mut info = UpdateInfo::empty(PlaformVariant::PS3);
+        assert!(parse_response(xml.to_string(), &mut info).is_err());
+    }
 }

@@ -139,6 +139,9 @@ impl UpdateInfo {
                     }
                     parser::ParseError::XmlParsing(reason) => Err(UpdateError::XmlParsing(reason)),
                     parser::ParseError::XmlEncodingError(reason) => Err(UpdateError::XmlEncodingError(reason)),
+                    parser::ParseError::InvalidTitleId(id) => {
+                        Err(UpdateError::UnhandledErrorResponse(format!("invalid title id {id:?}")))
+                    }
                 }
             }
         }
