@@ -53,6 +53,8 @@ pub fn start_app(args: Args) -> bool {
             .collect();
     }
 
+    let mut success = true;
+
     let update_info = {
         let mut info = Vec::new();
 
@@ -70,46 +72,69 @@ pub fn start_app(args: Args) -> bool {
 
             match promise.block_and_take() {
                 Ok(i) => {
-                    info!("Successfully search for updates for {id}");
+                    info!("Successfully searched for updates for {id}");
                     info.push(i);
                 }
-                Err(e) => match e {
-                    UpdateError::UnhandledErrorResponse(e) => {
-                        error!("Unexpected error received in response from PSN: {e}");
-                        println!("{id}: PSN returned an unexpected error: {e}.");
+                Err(e) => {
+                    match e {
+                        UpdateError::UnhandledErrorResponse(e) => {
+                            error!("Unexpected error received in response from PSN: {e}");
+
+                            if !silent_mode {
+                                println!("{id}: PSN returned an unexpected error: {e}.");
+                            }
+                        }
+                        UpdateError::InvalidSerial => {
+                            error!("Invalid serial for updates query {id}");
+
+                            if !silent_mode {
+                                println!("{id}: The provided serial didn't give any results, double-check your input.");
+                            }
+                        }
+                        UpdateError::NoUpdatesAvailable => {
+                            warn!("No updates available for serial {id}");
+
+                            if !silent_mode {
+                                println!("{id}: The provided serial doesn't have any available updates.");
+                            }
+                        }
+                        UpdateError::Reqwest(e) => {
+                            error!("reqwest error on updates query: {e}");
+
+                            if !silent_mode {
+                                println!("{id}: There was an error on the request: {e}.");
+                            }
+                        }
+                        UpdateError::XmlParsing(e) => {
+                            error!("Failed to deserialize response for {id}: {e}");
+
+                            if !silent_mode {
+                                println!("{id}: Error parsing response from PSN, try again later ({e}).");
+                            }
+                        }
+                        UpdateError::XmlEncodingError(e) => {
+                            error!("Failed to deserialize response for {id}: {e}");
+
+                            if !silent_mode {
+                                println!("{id}: Error parsing response from PSN, try again later ({e}).");
+                            }
+                        }
+                        UpdateError::ManifestParsing(e) => {
+                            error!("Failed to deserialize manifest response for {id}: {e}");
+
+                            if !silent_mode {
+                                println!("{id}: Error parsing manifest response from PSN, try again later ({e}).");
+                            }
+                        }
                     }
-                    UpdateError::InvalidSerial => {
-                        error!("Invalid serial for updates query {id}");
-                        println!("{id}: The provided serial didn't give any results, double-check your input.");
-                    }
-                    UpdateError::NoUpdatesAvailable => {
-                        warn!("No updates available for serial {id}");
-                        println!("{id}: The provided serial doesn't have any available updates.");
-                    }
-                    UpdateError::Reqwest(e) => {
-                        error!("reqwest error on updates query: {e}");
-                        println!("{id}: There was an error on the request: {e}.");
-                    }
-                    UpdateError::XmlParsing(e) => {
-                        error!("Failed to deserialize response for {id}: {e}");
-                        println!("{id}: Error parsing response from PSN, try again later ({e}).");
-                    }
-                    UpdateError::XmlEncodingError(e) => {
-                        error!("Failed to deserialize response for {id}: {e}");
-                        println!("{id}: Error parsing response from PSN, try again later ({e}).");
-                    }
-                    UpdateError::ManifestParsing(e) => {
-                        error!("Failed to deserialize manifest response for {id}: {e}");
-                        println!("{id}: Error parsing manifest response from PSN, try again later ({e}).");
-                    }
+
+                    success = false;
                 },
             }
         }
 
         info
     };
-
-    let mut success = true;
 
     for update in update_info {
         let title = {
