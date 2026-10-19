@@ -10,7 +10,7 @@ use tokio::runtime::Runtime;
 use crate::psn::*;
 use crate::Args;
 
-pub fn start_app(args: Args) {
+pub fn start_app(args: Args) -> bool {
     let runtime = Runtime::new().unwrap();
 
     let _guard = runtime.enter();
@@ -31,7 +31,7 @@ pub fn start_app(args: Args) {
     if args.titles.is_empty() {
         if silent_mode {
             error!("rusty-psn is running in silent mode, but no titles were provided. Exiting...");
-            return;
+            return false;
         }
 
         let list: String = Input::new()
@@ -108,6 +108,8 @@ pub fn start_app(args: Args) {
 
         info
     };
+
+    let mut success = true;
 
     for update in update_info {
         let title = {
@@ -222,6 +224,8 @@ pub fn start_app(args: Args) {
                                     println!("Error downloading update: {e}.")
                                 }
                             }
+
+                            success = false;
                         }
 
                         break;
@@ -250,6 +254,8 @@ pub fn start_app(args: Args) {
                                     if !silent_mode {
                                         progress.as_ref().unwrap().abandon_with_message("Download failed.");
                                     }
+
+                                    success = false;
                                 }
                             }
                         }
@@ -262,4 +268,6 @@ pub fn start_app(args: Args) {
 
         std::thread::sleep(std::time::Duration::from_secs(3));
     }
+
+    success
 }

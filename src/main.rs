@@ -16,6 +16,8 @@ mod utils;
 use clap::Parser;
 use flexi_logger::{Logger, LoggerHandle};
 
+use std::process::ExitCode;
+
 #[cfg(feature = "cli")]
 #[derive(Debug, Parser)]
 #[clap(author, version, about)]
@@ -36,14 +38,17 @@ struct Args {
     destination_path: Option<std::path::PathBuf>,
 }
 
-fn main() {
+fn main() -> ExitCode {
     let _logger_handle = init_log();
 
     #[cfg(feature = "cli")]
     {
         let args = Args::parse();
         info!("starting cli app");
-        cli::start_app(args);
+
+        if !cli::start_app(args) {
+            return ExitCode::FAILURE;
+        }
     }
 
     #[cfg(feature = "egui")]
@@ -75,6 +80,8 @@ fn main() {
         notify_main.notify_one();
         let _ = rt_thread.join();
     }
+
+    ExitCode::SUCCESS
 }
 
 fn init_log() -> LoggerHandle {
