@@ -149,7 +149,14 @@ pub fn start_app(args: Args) {
                 .expect("Failed to get user's response");
 
             info!("User input was '{:?}', moving on to download...", response);
-            println!("\n[{}] {} - {} - Downloading {} update(s).", update.platform_variant, update.title_id, title, response.len());
+
+            if response.is_empty() {
+                println!("\n[{}] {} - {} - No updates were selected, skipping...", update.platform_variant, update.title_id, title);
+                continue;
+            }
+            else {
+                println!("\n[{}] {} - {} - Downloading {} update(s).", update.platform_variant, update.title_id, title, response.len());
+            }
         }
 
         for (idx, pkg) in update.packages.iter().enumerate() {
