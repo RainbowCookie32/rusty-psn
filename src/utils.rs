@@ -10,12 +10,6 @@ use tokio::io::{self, AsyncBufReadExt, AsyncSeekExt, BufReader, SeekFrom};
 
 use crate::psn::DownloadError;
 
-#[cfg(target_family = "windows")]
-const INVALID_CHARS: [char; 9] = ['<', '>', ':', '"', '/', '\\', '|', '?', '*'];
-
-#[cfg(target_family = "unix")]
-const INVALID_CHARS: [char; 1] = ['/'];
-
 fn sanitize_title(title: &str) -> String {
     let options = if cfg!(target_family = "windows") {
         sanitise_file_name::Options::default()
