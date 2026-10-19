@@ -45,7 +45,12 @@ pub fn start_app(args: Args) {
         clearscreen::clear().unwrap_or(());
     }
     else {
-        titles = args.titles[0].split(' ').map(|s| s.to_string()).collect();
+        titles = args
+            .titles
+            .iter()
+            .flat_map(|t| t.split_whitespace())
+            .map(|s| s.to_string())
+            .collect();
     }
 
     let update_info = {
