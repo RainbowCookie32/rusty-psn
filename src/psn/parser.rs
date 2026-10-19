@@ -12,10 +12,13 @@ pub enum ParseError {
 
 pub fn parse_response(response: String, info: &mut UpdateInfo) -> Result<(), ParseError> {
     let mut reader = Reader::from_str(&response);
-    reader.config_mut().trim_text(true);
+    // No per-event trimming: a title arrives as several events split at each entity
+    // ("Ratchet ", "&amp;", " Clank"), and trimming each piece would drop the spaces.
+    reader.config_mut().trim_text(false);
 
     let mut depth = 0;
     let mut title_element = false;
+    let mut title_text = String::new();
     let mut event_buf = Vec::new();
 
     let mut err_encountered = false;
@@ -103,12 +106,21 @@ pub fn parse_response(response: String, info: &mut UpdateInfo) -> Result<(), Par
 
                         if name.to_lowercase().starts_with("title") {
                             title_element = true;
+                            title_text.clear();
                         }
                     }
                 }
             }
             Ok(Event::End(_)) => {
                 depth -= 1;
+
+                if title_element {
+                    title_element = false;
+                    let title = title_text.trim();
+                    if !title.is_empty() {
+                        info.titles.push(title.to_string());
+                    }
+                }
             }
             Ok(Event::Empty(e)) => {
                 if let b"package" = e.name().as_ref() {
@@ -149,13 +161,22 @@ pub fn parse_response(response: String, info: &mut UpdateInfo) -> Result<(), Par
             }
             Ok(Event::Text(e)) => {
                 if title_element {
-                    let title = e.decode().map_err(ParseError::XmlEncodingError)?;
-
-                    title_element = false;
-                    info.titles.push(title.to_string());
+                    title_text.push_str(&e.decode().map_err(ParseError::XmlEncodingError)?);
                 } else if err_code_encountered {
                     let err_code_text = e.decode().map_err(ParseError::XmlEncodingError)?;
-                    return Err(ParseError::ErrorCode(err_code_text.into()));
+                    return Err(ParseError::ErrorCode(err_code_text.trim().to_string()));
+                }
+            }
+            // An entity such as &amp; inside a title arrives as its own event.
+            Ok(Event::GeneralRef(e)) => {
+                if title_element {
+                    if let Ok(Some(c)) = e.resolve_char_ref() {
+                        title_text.push(c);
+                    } else if let Ok(name) = e.decode() {
+                        if let Some(text) = quick_xml::escape::resolve_predefined_entity(&name) {
+                            title_text.push_str(text);
+                        }
+                    }
                 }
             }
             Ok(Event::Eof) => break,
@@ -172,4 +193,19 @@ pub fn parse_response(response: String, info: &mut UpdateInfo) -> Result<(), Par
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::psn::PlaformVariant;
+
+    #[test]
+    fn parse_response_keeps_a_title_with_an_entity_whole() {
+        // The reply for BCUS98124 carries "Ratchet &amp; Clank Future: A Crack In Time".
+        let xml = r#"<titlepatch titleid="BCUS98124"><tag name="x"><package version="01.01" size="1" sha1sum="a" url="https://a0.ww.np.dl.playstation.net/x.pkg"><paramsfo><TITLE>Ratchet &amp; Clank Future: A Crack In Time</TITLE></paramsfo></package></tag></titlepatch>"#;
+        let mut info = UpdateInfo::empty(PlaformVariant::PS3);
+        parse_response(xml.to_string(), &mut info).unwrap();
+        assert_eq!(info.titles, vec!["Ratchet & Clank Future: A Crack In Time".to_string()]);
+    }
 }
