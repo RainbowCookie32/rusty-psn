@@ -250,6 +250,8 @@ pub fn start_app(args: Args) {
                         }
                     }
                 }
+
+                std::thread::sleep(std::time::Duration::from_millis(100));
             }
         }
 
