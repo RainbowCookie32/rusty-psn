@@ -85,8 +85,7 @@ fn main() -> ExitCode {
 }
 
 fn init_log() -> LoggerHandle {
-    let mut logger = Logger::try_with_str("info")
-        .expect("Failed to create logger");
+    let mut logger = Logger::try_with_str("info").expect("Failed to create logger");
 
     if cfg!(target_os = "macos") {
         let mut logs_dir = dirs::data_local_dir().unwrap();
@@ -101,8 +100,7 @@ fn init_log() -> LoggerHandle {
         }
 
         logger = logger.log_to_file(flexi_logger::FileSpec::default().directory(logs_dir));
-    }
-    else {
+    } else {
         logger = logger.log_to_file(flexi_logger::FileSpec::default())
     }
 

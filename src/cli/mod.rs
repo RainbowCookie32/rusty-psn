@@ -20,8 +20,7 @@ pub fn start_app(args: Args) -> bool {
 
     if silent_mode {
         info!("App started in silent mode!");
-    }
-    else {
+    } else {
         println!("rusty-psn");
         clearscreen::clear().unwrap_or(());
     }
@@ -43,8 +42,7 @@ pub fn start_app(args: Args) -> bool {
 
         titles = list.split(' ').map(|s| s.to_string()).collect();
         clearscreen::clear().unwrap_or(());
-    }
-    else {
+    } else {
         titles = args
             .titles
             .iter()
@@ -129,7 +127,7 @@ pub fn start_app(args: Args) -> bool {
                     }
 
                     success = false;
-                },
+                }
             }
         }
 
@@ -149,12 +147,7 @@ pub fn start_app(args: Args) -> bool {
         let mut response = Vec::new();
 
         if !silent_mode {
-            let total_size = ByteSize::b(
-                update.packages
-                    .iter()
-                    .map(|p| p.size)
-                    .sum::<u64>()
-            );
+            let total_size = ByteSize::b(update.packages.iter().map(|p| p.size).sum::<u64>());
 
             println!(
                 "[{}] {} - {} - {} update(s) ({})",
@@ -165,9 +158,11 @@ pub fn start_app(args: Args) -> bool {
                 total_size
             );
 
-            let update_options: Vec<String> = update.packages.iter().map( | pkg | {
-                format!("{} ({})", pkg.id(), ByteSize::b(pkg.size))
-            }).collect();
+            let update_options: Vec<String> = update
+                .packages
+                .iter()
+                .map(|pkg| format!("{} ({})", pkg.id(), ByteSize::b(pkg.size)))
+                .collect();
 
             info!("Querying user for wanted updates for {}", update.title_id);
             println!();
@@ -183,11 +178,19 @@ pub fn start_app(args: Args) -> bool {
             info!("User input was '{:?}', moving on to download...", response);
 
             if response.is_empty() {
-                println!("\n[{}] {} - {} - No updates were selected, skipping...", update.platform_variant, update.title_id, title);
+                println!(
+                    "\n[{}] {} - {} - No updates were selected, skipping...",
+                    update.platform_variant, update.title_id, title
+                );
                 continue;
-            }
-            else {
-                println!("\n[{}] {} - {} - Downloading {} update(s).", update.platform_variant, update.title_id, title, response.len());
+            } else {
+                println!(
+                    "\n[{}] {} - {} - Downloading {} update(s).",
+                    update.platform_variant,
+                    update.title_id,
+                    title,
+                    response.len()
+                );
             }
         }
 
@@ -203,18 +206,18 @@ pub fn start_app(args: Args) -> bool {
                 let download_pkg = pkg.clone();
                 let download_title = title.clone();
 
-                Promise::spawn_async(async move {
-                    download_pkg.start_download(tx, download_path, serial, download_title).await
-                })
+                Promise::spawn_async(async move { download_pkg.start_download(tx, download_path, serial, download_title).await })
             };
 
             let progress = if !silent_mode {
-                let style = ProgressStyle::with_template("{prefix}  [{elapsed}] [{wide_bar:.cyan/blue}] {msg} {bytes} ({bytes_per_sec} - {eta} left)")
-                    .unwrap()
-                    .progress_chars("#>-");
+                let style = ProgressStyle::with_template(
+                    "{prefix}  [{elapsed}] [{wide_bar:.cyan/blue}] {msg} {bytes} ({bytes_per_sec} - {eta} left)",
+                )
+                .unwrap()
+                .progress_chars("#>-");
 
-                let progress = ProgressBar::new(pkg.size)
-                    .with_prefix(format!("{title} v{} ({})", pkg.version, ByteSize::b(pkg.size)));
+                let progress =
+                    ProgressBar::new(pkg.size).with_prefix(format!("{title} v{} ({})", pkg.version, ByteSize::b(pkg.size)));
                 progress.set_style(style);
 
                 Some(progress)
