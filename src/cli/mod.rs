@@ -34,7 +34,7 @@ pub fn start_app(args: Args) -> bool {
         }
 
         let list: String = Input::new()
-            .with_prompt("No title serials were provided, please input them as a space-separated list (for example: BLES01275 BLUS31156 BLES01976).")
+            .with_prompt("No title serials were provided.\nPlease input them as a space-separated list (for example: BLES01275 BLUS31156 BLES01976).\n")
             .allow_empty(false)
             .report(false)
             .interact_text()
