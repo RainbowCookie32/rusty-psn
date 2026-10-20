@@ -259,8 +259,7 @@ pub fn start_app(args: Args) -> bool {
                             }
 
                             success = false;
-                        }
-                        else {
+                        } else {
                             if !silent_mode {
                                 progress.as_ref().unwrap().finish_with_message("Download succeeded.");
                                 progress.as_ref().unwrap().force_draw();
