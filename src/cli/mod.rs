@@ -34,13 +34,13 @@ pub fn start_app(args: Args) -> bool {
         }
 
         let list: String = Input::new()
-            .with_prompt("No title serials were provided, please input them as a space-separated list (for example: BLES01275 BLUS31156 BLES01976).")
+            .with_prompt("No title serials were provided.\nPlease input them as a space-separated list (for example: BLES01275 BLUS31156 BLES01976).\n")
             .allow_empty(false)
             .report(false)
             .interact_text()
             .expect("Failed to get list input");
 
-        titles = list.split(' ').map(|s| s.to_string()).collect();
+        titles = list.split_whitespace().map(|s| s.to_string()).collect();
         clearscreen::clear().unwrap_or(());
     } else {
         titles = args
@@ -253,7 +253,17 @@ pub fn start_app(args: Args) -> bool {
                                 }
                             }
 
+                            if !silent_mode {
+                                progress.as_ref().unwrap().abandon_with_message("Download failed");
+                                progress.as_ref().unwrap().force_draw();
+                            }
+
                             success = false;
+                        } else {
+                            if !silent_mode {
+                                progress.as_ref().unwrap().finish_with_message("Download succeeded.");
+                                progress.as_ref().unwrap().force_draw();
+                            }
                         }
 
                         break;
@@ -276,6 +286,7 @@ pub fn start_app(args: Args) -> bool {
                                 DownloadStatus::DownloadSuccess => {
                                     if !silent_mode {
                                         progress.as_ref().unwrap().finish_with_message("Download succeeded.");
+                                        progress.as_ref().unwrap().force_draw();
                                     }
                                 }
                                 DownloadStatus::DownloadFailure => {

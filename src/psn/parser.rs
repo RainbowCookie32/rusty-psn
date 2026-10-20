@@ -180,6 +180,7 @@ pub fn parse_response(response: String, info: &mut UpdateInfo) -> Result<(), Par
                 }
             }
             Ok(Event::Eof) => break,
+            Err(e) => return Err(ParseError::XmlParsing(e)),
             _ => {}
         }
     }
@@ -207,5 +208,16 @@ mod tests {
         let mut info = UpdateInfo::empty(PlaformVariant::PS3);
         parse_response(xml.to_string(), &mut info).unwrap();
         assert_eq!(info.titles, vec!["Ratchet & Clank Future: A Crack In Time".to_string()]);
+    }
+
+    #[test]
+    fn parse_response_returns_reader_errors() {
+        // A damaged reply must fail, not give a half-filled update list.
+        let xml = r#"<titlepatch titleid="BLUS31147"><tag name="x"><package version="01.01" size="1" sha1sum="a" url="https://a0.ww.np.dl.playstation.net/x.pkg"/></wrong></titlepatch>"#;
+        let mut info = UpdateInfo::empty(PlaformVariant::PS3);
+        assert!(matches!(
+            parse_response(xml.to_string(), &mut info),
+            Err(ParseError::XmlParsing(_))
+        ));
     }
 }
