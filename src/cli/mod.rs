@@ -253,7 +253,18 @@ pub fn start_app(args: Args) -> bool {
                                 }
                             }
 
+                            if !silent_mode {
+                                progress.as_ref().unwrap().abandon_with_message("Download failed");
+                                progress.as_ref().unwrap().force_draw();
+                            }
+
                             success = false;
+                        }
+                        else {
+                            if !silent_mode {
+                                progress.as_ref().unwrap().finish_with_message("Download succeeded.");
+                                progress.as_ref().unwrap().force_draw();
+                            }
                         }
 
                         break;
@@ -276,6 +287,7 @@ pub fn start_app(args: Args) -> bool {
                                 DownloadStatus::DownloadSuccess => {
                                     if !silent_mode {
                                         progress.as_ref().unwrap().finish_with_message("Download succeeded.");
+                                        progress.as_ref().unwrap().force_draw();
                                     }
                                 }
                                 DownloadStatus::DownloadFailure => {
