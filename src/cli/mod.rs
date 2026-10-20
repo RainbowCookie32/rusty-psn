@@ -40,7 +40,7 @@ pub fn start_app(args: Args) -> bool {
             .interact_text()
             .expect("Failed to get list input");
 
-        titles = list.split(' ').map(|s| s.to_string()).collect();
+        titles = list.split_whitespace().map(|s| s.to_string()).collect();
         clearscreen::clear().unwrap_or(());
     } else {
         titles = args
